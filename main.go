@@ -21,6 +21,8 @@ var AUTHORIZED_USERS = map[string]bool{
 	"96492516966174720": true, //valar
 }
 
+var myNewRole discordgo.GuildRoleCreate
+
 // Struct to keep track of how /assignroles is being used (we want to disallow multiple simultanious use)
 type assignroles_t struct {
 	isInUse   bool               //is set to true if command is in use
@@ -41,7 +43,6 @@ func scan_message(s *discordgo.Session, m *discordgo.MessageCreate) {
 
 	// Respond to specific messages
 	switch m.Content {
-
 	case "/assignroles":
 		if assignroles_s.isInUse { //check if this command is in use first and disallow simultanious use
 			_, err := s.ChannelMessageSend(m.ChannelID, "[:exclamation:] Error, `/assignroles` is currently in use. Unable to comply.\nIf you are trying to assign roles, please post a link to the spreadsheet you want me to use.")
@@ -69,26 +70,25 @@ func scan_message(s *discordgo.Session, m *discordgo.MessageCreate) {
 				fmt.Println(err)
 			}
 		}
+		// =====================================================================
+		// USE THIS COMMAND FOR TESTING
+		// =====================================================================
 	case "/test":
-		_, err := s.ChannelMessageSend(m.ChannelID, "test received. Checking your roles..")
+		message := test(s, m)
+
+		_, err := s.ChannelMessageSend(m.ChannelID, message)
 		if err != nil {
 			fmt.Println(err)
 			return
 		}
-		reply := ""
-		for i, v := range m.MentionRoles {
-			fmt.Println(i, v)
-			reply += v + " "
-		}
-		_, err = s.ChannelMessageSend(m.ChannelID, reply)
-		//a := m.Attachments
+		// =====================================================================
+		// =====================================================================
 
 	case "/help":
 		_, err := s.ChannelMessageSend(m.ChannelID, AVAILABLE_COMMANDS)
 		if err != nil {
 			fmt.Println(err)
 		}
-
 	}
 
 	if assignroles_s.isInUse && assignroles_s.AuthorID == m.Author.ID {
@@ -99,6 +99,38 @@ func scan_message(s *discordgo.Session, m *discordgo.MessageCreate) {
 		assignroles_s.isInUse = false //reset the data so /assignroles can be used again
 	}
 
+}
+
+// Executes with side effects and returns final message to be send
+func test(s *discordgo.Session, m *discordgo.MessageCreate) string {
+
+	// Create a new role on the server
+	new_role_id, err := s.GuildRoleCreate(m.GuildID)
+
+	// Specify the configuration of the new role (name, color, perms, etc)
+	role_name := "MEEP"
+	role_color := 42
+	hoist := false
+	mentionable := true
+	var perm int64 = 0
+
+	// Apply the specified configuration to the new role
+	role_post_creation, err := s.GuildRoleEdit(m.GuildID, new_role_id.ID, role_name, role_color, hoist, perm, mentionable)
+	if err != nil {
+		fmt.Println(err)
+		return "Error in test() execution 1"
+	}
+	fmt.Println("Created new role - NAME:", role_post_creation.Name, "ID:", role_post_creation.ID)
+
+	// Add the role to the author of test message
+	err = s.GuildMemberRoleAdd(m.GuildID, m.Author.ID, new_role_id.ID)
+	if err != nil {
+		fmt.Println(err)
+		return "Error in test() execution 2"
+	}
+
+	message := "Test function executed successfully"
+	return message
 }
 
 func main() {
@@ -122,7 +154,9 @@ func main() {
 	dg.AddHandler(scan_message)
 
 	// Exclusively care about receiving message events
-	dg.Identify.Intents = discordgo.IntentsGuildMessages
+	//dg.Identify.Intents = discordgo.IntentsGuildMessages
+	dg.Identify.Intents = discordgo.IntentsAll
+	//dg.Identify.Intents = discordgo.IntentsGuilds
 
 	// Establish the discord sessin through discord bot api
 	err = dg.Open()
@@ -139,5 +173,5 @@ func main() {
 
 	// Gracefully close down the Discord session on exit
 	dg.Close()
-
+	fmt.Printf("\nBot exited gracefully.\n")
 }
