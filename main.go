@@ -14,12 +14,15 @@ import (
 const AVAILABLE_COMMANDS string = `Available Commands:
 /help
 /test
+/undo - deletes the roles that were assigned the last time (FIXME: does not carry over on bot reboot)
 /assignroles - automatically create and assign roles from a spreadsheet (special access privileges required)`
 
 // Hardcode all IDs that are allowed to use potentially dangerous administrative actions, such as /assignroles
 var AUTHORIZED_USERS = map[string]bool{
 	"96492516966174720": true, //valar
 }
+
+var newly_created_roles []string
 
 // Struct to store information about a team-role
 type team_t struct {
@@ -41,7 +44,7 @@ type assignroles_t struct {
 
 var assignroles_s assignroles_t
 
-// Is called by AddHandler time a new message is created - on ANY channel the bot has access to
+// Is called by AddHandler every time a new message is created - on ANY channel the bot has access to
 func scan_message(s *discordgo.Session, m *discordgo.MessageCreate) {
 
 	// Ignore all messages created by the bot itself
@@ -51,6 +54,12 @@ func scan_message(s *discordgo.Session, m *discordgo.MessageCreate) {
 
 	// Respond to specific messages
 	switch m.Content {
+	case "/undo":
+		undo(s, m)
+		_, err := s.ChannelMessageSend(m.ChannelID, "Deleted roles.")
+		if err != nil {
+			fmt.Println(err)
+		}
 	case "/assignroles":
 		if assignroles_s.isInUse { //check if this command is in use first and disallow simultanious use
 			_, err := s.ChannelMessageSend(m.ChannelID, "[:exclamation:] Error, `/assignroles` is currently in use. Unable to comply.\nIf you are trying to assign roles, please post a link to the spreadsheet you want me to use.")
@@ -98,6 +107,7 @@ func scan_message(s *discordgo.Session, m *discordgo.MessageCreate) {
 			fmt.Println(err)
 		}
 	}
+	//fmt.Println(m.GuildIDO
 
 	if assignroles_s.isInUse && assignroles_s.AuthorID == m.Author.ID {
 		_, err := s.ChannelMessageSend(m.ChannelID, "[:sparkles:] Trying to fetch spreadsheet from URL: \""+m.Content+"\"")
@@ -106,7 +116,6 @@ func scan_message(s *discordgo.Session, m *discordgo.MessageCreate) {
 		}
 		assignroles_s.isInUse = false //reset the data so /assignroles can be used again
 	}
-
 }
 
 // Executes with side effects and returns final message to be send
@@ -128,7 +137,6 @@ func test(s *discordgo.Session, m *discordgo.MessageCreate) string {
 
 	// 2. Create some new roles
 	roles_needed_amount := len(teams)
-
 	for i := 0; i < roles_needed_amount; i++ {
 		new_role, err := s.GuildRoleCreate(m.GuildID)
 		teams[i].fully_created_role = *new_role
@@ -136,11 +144,11 @@ func test(s *discordgo.Session, m *discordgo.MessageCreate) string {
 			fmt.Println(err)
 		}
 		//TODO: We should save a list of the newly created role IDs so we can simply remove a batch of incorrectly created roles
+		newly_created_roles = append(newly_created_roles, new_role.ID)
 	}
 
 	// 3. Write the configuration of each role to the newly created roles
 	for i := 0; i < roles_needed_amount; i++ {
-		fmt.Println("is this even executing?")
 		// Apply the specified configuration to the new role
 		role_post_creation, err := s.GuildRoleEdit(m.GuildID, teams[i].fully_created_role.ID, teams[i].name, teams[i].color, false, teams[0].perms, true)
 		if err != nil {
@@ -162,6 +170,14 @@ func test(s *discordgo.Session, m *discordgo.MessageCreate) string {
 
 	message := "Test function executed successfully"
 	return message
+}
+
+func undo(s *discordgo.Session, m *discordgo.MessageCreate) {
+	for _, v := range newly_created_roles {
+		//s.State.RoleRemove(m.Member.GuildID, v)
+		s.GuildRoleDelete(m.GuildID, v)
+		fmt.Println(v)
+	}
 }
 
 func main() {
