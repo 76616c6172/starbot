@@ -21,8 +21,6 @@ var AUTHORIZED_USERS = map[string]bool{
 	"96492516966174720": true, //valar
 }
 
-var myNewRole discordgo.GuildRoleCreate
-
 // Struct to keep track of how /assignroles is being used (we want to disallow multiple simultanious use)
 type assignroles_t struct {
 	isInUse   bool               //is set to true if command is in use
