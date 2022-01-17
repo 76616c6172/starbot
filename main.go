@@ -21,6 +21,16 @@ var AUTHORIZED_USERS = map[string]bool{
 	"96492516966174720": true, //valar
 }
 
+// Struct to store information about a team-role
+type team_t struct {
+	name               string
+	members            []string
+	color              int
+	mentionable        bool
+	perms              int64
+	fully_created_role discordgo.Role
+}
+
 // Struct to keep track of how /assignroles is being used (we want to disallow multiple simultanious use)
 type assignroles_t struct {
 	isInUse   bool               //is set to true if command is in use
@@ -102,29 +112,52 @@ func scan_message(s *discordgo.Session, m *discordgo.MessageCreate) {
 // Executes with side effects and returns final message to be send
 func test(s *discordgo.Session, m *discordgo.MessageCreate) string {
 
-	// Create a new role on the server
-	new_role_id, err := s.GuildRoleCreate(m.GuildID)
+	// 1. suppose we have a list of roles to create
+	// TODO: We should get this data from parsing a file/spreadsheet/json etc..
+	teams := make([]team_t, 2)
 
-	// Specify the configuration of the new role (name, color, perms, etc)
-	role_name := "MEEP"
-	role_color := 42
-	hoist := false
-	mentionable := true
-	var perm int64 = 0
+	teams[0].name = "Samyang Fire"
+	teams[0].members = append(teams[0].members, "96492516966174720") //fixme: IDK how to go from tag to ID
+	teams[0].color = 15548997                                        //red
+	teams[0].perms = 0
 
-	// Apply the specified configuration to the new role
-	role_post_creation, err := s.GuildRoleEdit(m.GuildID, new_role_id.ID, role_name, role_color, hoist, perm, mentionable)
-	if err != nil {
-		fmt.Println(err)
-		return "Error in test() execution 1"
+	teams[1].name = "Teamliquid"
+	teams[1].members = append(teams[0].members, "96492516966174720") //fixme: IDK how to go from tag to ID
+	teams[1].color = 5793266                                         //blue
+	teams[1].perms = 0
+
+	// 2. Create some new roles
+	roles_needed_amount := len(teams)
+
+	for i := 0; i < roles_needed_amount; i++ {
+		new_role, err := s.GuildRoleCreate(m.GuildID)
+		teams[i].fully_created_role = *new_role
+		if err != nil {
+			fmt.Println(err)
+		}
+		//TODO: We should save a list of the newly created role IDs so we can simply remove a batch of incorrectly created roles
 	}
-	fmt.Println("Created new role - NAME:", role_post_creation.Name, "ID:", role_post_creation.ID)
 
-	// Add the role to the author of test message
-	err = s.GuildMemberRoleAdd(m.GuildID, m.Author.ID, new_role_id.ID)
-	if err != nil {
-		fmt.Println(err)
-		return "Error in test() execution 2"
+	// 3. Write the configuration of each role to the newly created roles
+	for i := 0; i < roles_needed_amount; i++ {
+		fmt.Println("is this even executing?")
+		// Apply the specified configuration to the new role
+		role_post_creation, err := s.GuildRoleEdit(m.GuildID, teams[i].fully_created_role.ID, teams[i].name, teams[i].color, false, teams[0].perms, true)
+		if err != nil {
+			fmt.Println(err)
+			return "Error in test() execution 1"
+		}
+		fmt.Println("Created new role - NAME:", role_post_creation.Name, "ID:", role_post_creation.ID)
+	}
+
+	// 4. Add each team role to the correct users
+	for i := 0; i < roles_needed_amount; i++ {
+		for z := 0; z < len(teams[i].members); z++ {
+			err := s.GuildMemberRoleAdd(m.GuildID, teams[i].members[z], teams[i].fully_created_role.ID)
+			if err != nil {
+				fmt.Println(err)
+			}
+		}
 	}
 
 	message := "Test function executed successfully"
