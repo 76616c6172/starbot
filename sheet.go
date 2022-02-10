@@ -38,25 +38,44 @@ func parse_sheet(players map[string]player_t) map[string]player_t {
 
 	// see: https://developers.google.com/sheets/api/guides/concepts
 	// This gives all screen names
-	target_sheet := "Player List" + "!A2:A"
-	// Read sheet based on spreadsheet ID
-	resp, err := srv.Spreadsheets.Values.Get(SPREADSHEET_ID, target_sheet).Do()
+
+	// Read sheet name cells from spreadsheet
+	target_screen_names := "Player List" + "!A2:A"
+	screenNameResp, err := srv.Spreadsheets.Values.Get(SPREADSHEET_ID, target_screen_names).Do()
 	checkError(err)
 
-	//how the fuck does this work
-	//	xx, err := resp.MarshalJSON()
-	//checkError(err)
-	//fmt.Println(xx)
+	// Read discord name cells from spreadsheet
+	target_discord_names := "Player List" + "!B2:B"
+	discordNameResp, err := srv.Spreadsheets.Values.Get(SPREADSHEET_ID, target_discord_names).Do()
+	checkError(err)
+
+	// Read race cells from spreadsheet
+	target_ingame_race := "Player List" + "!E2:E"
+	ingameRaceResp, err := srv.Spreadsheets.Values.Get(SPREADSHEET_ID, target_ingame_race).Do()
+	checkError(err)
 
 	//Extract the screen names of the players
 	//for _, row := range resp.Values {
-	for i := 0; i < len(resp.Values); i++ {
-		a := fmt.Sprint(resp.Values[i]...)
+	// Loop over the data and add it to the players map
+	for i := 0; i < len(screenNameResp.Values); i++ {
+		//Extract the screen name
+		a := fmt.Sprint(screenNameResp.Values[i])
 		a = strings.TrimPrefix(a, "[")
 		a = strings.TrimSuffix(a, "]")
 
-		//fmt.Printf("%T %v\n", row, row)
-		fmt.Printf("%T, %v\n", a, a)
+		//Extract the discord name
+		b := fmt.Sprint(discordNameResp.Values[i])
+		b = strings.TrimPrefix(b, "[")
+		b = strings.TrimSuffix(b, "]")
+
+		//Extract ingame race
+		c := fmt.Sprint(ingameRaceResp.Values[i])
+		c = strings.TrimPrefix(c, "[")
+		c = strings.TrimSuffix(c, "]")
+
+		//add player data to the map
+		players[a] = player_t{discordName: b,
+			race: c}
 	}
 
 	/* usage goal:
