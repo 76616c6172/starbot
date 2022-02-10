@@ -20,7 +20,8 @@ type player_t struct {
 // error check as a func because it's annoying to write "if err != nil { .. .. }" over and over
 func checkError(err error) {
 	if err != nil {
-		panic(err.Error())
+		fmt.Println(err)
+		//panic(err.Error())
 	}
 }
 
