@@ -145,6 +145,7 @@ func test(s *discordgo.Session, m *discordgo.MessageCreate) string {
 		}
 		//TODO: We should save a list of the newly created role IDs so we can simply remove a batch of incorrectly created roles
 		newly_created_roles = append(newly_created_roles, new_role.ID)
+
 	}
 
 	// 3. Write the configuration of each role to the newly created roles
