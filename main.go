@@ -1,13 +1,18 @@
 package main
 
 import (
+	"context"
 	"fmt"
+	"io/ioutil"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 
 	//third party dependencies:
 	"github.com/bwmarrin/discordgo"
+	"golang.org/x/oauth2/google"
+	"google.golang.org/api/sheets/v4"
 )
 
 // Just a string of all available commands for use by the the /help command
@@ -17,12 +22,39 @@ const AVAILABLE_COMMANDS string = `Available Commands:
 /undo - deletes the roles that were assigned the last time (FIXME: does not carry over on bot reboot)
 /assignroles - automatically create and assign roles from a spreadsheet (special access privileges required)`
 
+// ###
+// IMPORTANT
+// The values here all need to be set correctly for all functionality to work!
+//
 // Hardcode all IDs that are allowed to use potentially dangerous administrative actions, such as /assignroles
 var AUTHORIZED_USERS = map[string]bool{
 	"96492516966174720": true, //valar
 }
 
+// The discord server ID that the bot is for
+var SERVER_ID string = "856762567414382632"
+
+// END
+// ###
+
 var newly_created_roles []string
+
+const SPREADSHEET_ID string = "1K-jV6-CUmjOSPW338MS8gXAYtYNW9qdMeB7XMEiQyn0"
+
+type player_t struct {
+	discord_Name string
+	discord_ID   string
+	race         string
+	usergroup    string
+}
+
+// error check as a func because it's annoying to write "if err != nil { .. .. }" over and over
+func checkError(err error) {
+	if err != nil {
+		fmt.Println(err)
+		//panic(err.Error())
+	}
+}
 
 // Struct to store information about a team-role
 type team_t struct {
@@ -57,6 +89,11 @@ func scan_message(s *discordgo.Session, m *discordgo.MessageCreate) {
 	case "/undo":
 		undo(s, m)
 		_, err := s.ChannelMessageSend(m.ChannelID, "Deleted roles.")
+		if err != nil {
+			fmt.Println(err)
+		}
+	case "/get_server_id": // Prints the ID of the discord server
+		_, err := s.ChannelMessageSend(m.ChannelID, m.GuildID)
 		if err != nil {
 			fmt.Println(err)
 		}
@@ -120,6 +157,11 @@ func scan_message(s *discordgo.Session, m *discordgo.MessageCreate) {
 
 // Executes with side effects and returns final message to be send
 func test(s *discordgo.Session, m *discordgo.MessageCreate) string {
+	//x := m.Author.Username //the username without nums
+	y := m.Author.String()
+
+	fmt.Println(y)
+	return (y + "test completed\n")
 
 	// 1. suppose we have a list of roles to create
 	// TODO: We should get this data from parsing a file/spreadsheet/json etc..
@@ -181,6 +223,97 @@ func undo(s *discordgo.Session, m *discordgo.MessageCreate) {
 	}
 }
 
+// Build a map of  he desired user state (discord roles) from google sheets
+// see: https://developers.google.com/sheets/api/guides/concepts
+func get_desired_state(players map[string]player_t) map[string]player_t {
+
+	// Read the secret file (google api key to access google sheets)
+	data, err := ioutil.ReadFile("secret.json")
+	checkError(err)
+	// Create oAuth client for google sheets
+	conf, err := google.JWTConfigFromJSON(data, sheets.SpreadsheetsScope)
+	checkError(err)
+	client := conf.Client(context.TODO())
+	srv, err := sheets.New(client)
+	checkError(err)
+
+	// Read sheet name cells from spreadsheet
+	target_screen_names := "Player List" + "!A2:A"
+	screenNameResp, err := srv.Spreadsheets.Values.Get(SPREADSHEET_ID, target_screen_names).Do()
+	checkError(err)
+
+	// Read discord name cells from spreadsheet
+	target_discord_names := "Player List" + "!B2:B"
+	discord_NameResp, err := srv.Spreadsheets.Values.Get(SPREADSHEET_ID, target_discord_names).Do()
+	checkError(err)
+
+	// Read race cells from spreadsheet
+	target_ingame_race := "Player List" + "!E2:E"
+	ingameRaceResp, err := srv.Spreadsheets.Values.Get(SPREADSHEET_ID, target_ingame_race).Do()
+	checkError(err)
+
+	// Read usergroup cells from spreadsheet
+	target_usergroup := "Player List" + "!C2:C"
+	usergroupResp, err := srv.Spreadsheets.Values.Get(SPREADSHEET_ID, target_usergroup).Do()
+	checkError(err)
+
+	//Extract the screen names of the players
+	//for _, row := range resp.Values {
+	// Loop over the data and add it to the players map
+	for i := 0; i < len(screenNameResp.Values); i++ {
+		//Extract the screen name
+		a := fmt.Sprint(screenNameResp.Values[i])
+		a = strings.TrimPrefix(a, "[")
+		a = strings.TrimSuffix(a, "]")
+
+		//Extract the discord name
+		b := fmt.Sprint(discord_NameResp.Values[i])
+		b = strings.TrimPrefix(b, "[")
+		b = strings.TrimSuffix(b, "]")
+
+		//Extract ingame race
+		c := fmt.Sprint(ingameRaceResp.Values[i])
+		c = strings.TrimPrefix(c, "[")
+		c = strings.TrimSuffix(c, "]")
+
+		//Extract usergroup (coach/player/etc)
+		d := fmt.Sprint(usergroupResp.Values[i])
+		d = strings.TrimPrefix(d, "[")
+		d = strings.TrimSuffix(d, "]")
+
+		//Get the players discord user_ID
+
+		//add player data to the map
+		players[a] = player_t{discord_Name: b,
+			race:      c,
+			usergroup: d}
+	}
+
+	/* usage goal:
+	players["screen-name"].discord_Name = bob#1337
+	players["screen-name"].race = zerg
+	//and so on..
+	*/
+
+	return players
+}
+
+// Testinggg
+//maps screenname to player_t (holds info such as discord username, starcraft race, etc..)
+func testinggg() {
+	// get info from google sheets
+	players_m := make(map[string]player_t)
+	players_m = get_desired_state(players_m)
+
+	// Iterate through all screennames listed on the google-sheet
+	//for screenName, b := range players_m {
+
+	// 1. get their discord user_Id
+
+	os.Exit(0)
+
+}
+
 func main() {
 	// Check to make sure a bot auth token was supplied on startup
 	if len(os.Args) < 2 || len(os.Args) > 2 {
@@ -188,14 +321,13 @@ func main() {
 		os.Exit(1)
 	}
 
-	// this is the auth token that allows us to interact with the discord api through a registered bot
+	// This is the auth token that allows us to interact with the discord api through a registered bot
 	TOKEN := os.Args[1]
 
 	// Returns dg which is of type session!
 	dg, err := discordgo.New("Bot " + TOKEN)
 	if err != nil {
 		fmt.Println("Error creating discord session", err)
-		os.Exit(1)
 	}
 
 	// Register scan_message as a callback func for message events
@@ -206,12 +338,27 @@ func main() {
 	dg.Identify.Intents = discordgo.IntentsAll
 	//dg.Identify.Intents = discordgo.IntentsGuilds
 
-	// Establish the discord sessin through discord bot api
+	// Establish the discord session through discord bot api
 	err = dg.Open()
 	if err != nil {
 		fmt.Println("Error opening connection", err)
 		os.Exit(1)
 	}
+
+	/* TESTING IN MAIN
+	##################
+	*/
+
+	// Get all the users in the discord
+	x, err := dg.GuildMembers(SERVER_ID, "0", 1000)
+	fmt.Println(x)
+
+	// Just Testing
+	//testinggg()
+
+	/* END OF TEST IN MAIN
+	#################
+	*/
 
 	// Keep running until exit signal is received..
 	fmt.Println("Bot is running..")
