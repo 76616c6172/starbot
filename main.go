@@ -349,9 +349,16 @@ func main() {
 	##################
 	*/
 
-	// Get all the users in the discord
-	x, err := dg.GuildMembers(SERVER_ID, "0", 1000)
-	fmt.Println(x)
+	// 1. Get all the users in the discord
+	all_discord_users, err := dg.GuildMembers(SERVER_ID, "", 1000)
+
+	// 2. Map username#discriminator to discord_id
+	discord_name_to_id_map := make(map[string]string)
+	for _, u := range all_discord_users {
+		discord_name_to_id_map[u.User.String()] = u.User.ID
+	}
+
+	fmt.Println(discord_name_to_id_map)
 
 	// Just Testing
 	//testinggg()
