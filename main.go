@@ -15,31 +15,33 @@ import (
 	"google.golang.org/api/sheets/v4"
 )
 
-// Just a string of all available commands for use by the the /help command
-const AVAILABLE_COMMANDS string = `Available Commands:
-/help
-/test
-/undo - deletes the roles that were assigned the last time (FIXME: does not carry over on bot reboot)
-/assignroles - automatically create and assign roles from a spreadsheet (special access privileges required)`
-
-// ###
-// IMPORTANT
+/* #####
+// IMPORTANT HARDCODED VALUES
 // The values here all need to be set correctly for all functionality to work!
-//
+*/
 // Hardcode all IDs that are allowed to use potentially dangerous administrative actions, such as /assignroles
 var AUTHORIZED_USERS = map[string]bool{
 	"96492516966174720": true, //valar
 }
 
-// The discord server ID that the bot is for
-var SERVER_ID string = "856762567414382632"
+const SPREADSHEET_ID string = "1K-jV6-CUmjOSPW338MS8gXAYtYNW9qdMeB7XMEiQyn0" // google sheet ID
+const SERVER_ID string = "856762567414382632"                                // the discord server ID
+const ZERG_ROLE_ID string = "941808009984737281"
+const TERRAN_ROLE_ID string = "941808071817187389"
+const PROTOSS_ROLE_ID string = "941808145993441331"
 
-// END
-// ###
+// help cmd text
+const AVAILABLE_COMMANDS string = `Available Commands:
+/test - testing
+/undo - deletes the roles that were assigned the last time (FIXME: does not carry over on bot reboot)
+/updateroles - automatically reassigns terran/zerg/protoss based on google-sheet (special access privileges required)`
+
+//##### End of Hardcoded values
+
+/* DATA STRUCTURES
+##### */
 
 var newly_created_roles []string
-
-const SPREADSHEET_ID string = "1K-jV6-CUmjOSPW338MS8gXAYtYNW9qdMeB7XMEiQyn0"
 
 type player_t struct {
 	discord_Name string
@@ -67,14 +69,16 @@ type team_t struct {
 }
 
 // Struct to keep track of how /assignroles is being used (we want to disallow multiple simultanious use)
-type assignroles_t struct {
+type rolesCmd_t struct {
 	isInUse   bool               //is set to true if command is in use
 	AuthorID  string             //author who last initiated /assignroles
 	ChannelID string             //channel where /assignroles was initiated from
 	session   *discordgo.Session //the current session
 }
 
-var assignroles_s assignroles_t
+var updateRoles_s rolesCmd_t
+
+//##### End of data structures
 
 // Is called by AddHandler every time a new message is created - on ANY channel the bot has access to
 func scan_message(s *discordgo.Session, m *discordgo.MessageCreate) {
@@ -97,25 +101,32 @@ func scan_message(s *discordgo.Session, m *discordgo.MessageCreate) {
 		if err != nil {
 			fmt.Println(err)
 		}
-	case "/assignroles":
-		if assignroles_s.isInUse { //check if this command is in use first and disallow simultanious use
-			_, err := s.ChannelMessageSend(m.ChannelID, "[:exclamation:] Error, `/assignroles` is currently in use. Unable to comply.\nIf you are trying to assign roles, please post a link to the spreadsheet you want me to use.")
+	case "/updateroles":
+		if updateRoles_s.isInUse { //check if this command is in use first and disallow simultanious use
+			_, err := s.ChannelMessageSend(m.ChannelID, "[:exclamation:] Error, `/updateroles` is currently in use. Unable to comply.\nIf you are trying to assign roles, please post a link to the spreadsheet you want me to use.")
 			if err != nil {
 				fmt.Println(err)
 			}
 			return
 		}
 		if AUTHORIZED_USERS[m.Author.ID] { // if the user is authorized, proceed with the operation
-			_, err := s.ChannelMessageSend(m.ChannelID,
-				"You are "+m.Author.Username+" and your authorization has been granted!\n\n**Post the link to the spreadsheet you want me to use.**\n\n[:sparkles:] Awaiting input from "+m.Author.Mention()+"...")
+			_, err := s.ChannelMessageSend(m.ChannelID, "> "+m.Author.Username+" used /updateroles ...\n")
 			if err != nil {
 				fmt.Println(err)
 				return
 			}
-			assignroles_s.isInUse = true
-			assignroles_s.session = s
-			assignroles_s.AuthorID = m.Author.ID
-			assignroles_s.ChannelID = m.ChannelID
+			updateRoles_s.isInUse = true
+			updateRoles_s.session = s
+			updateRoles_s.AuthorID = m.Author.ID
+			updateRoles_s.ChannelID = m.ChannelID
+			updaterace(s, m)              //testing new command
+			updateRoles_s.isInUse = false //reset the data so /updateroles can be used again
+			_, err = s.ChannelMessageSend(m.ChannelID, "Role update: done.\n")
+			if err != nil {
+				fmt.Println(err)
+				return
+			}
+
 			return
 
 		} else {
@@ -146,13 +157,16 @@ func scan_message(s *discordgo.Session, m *discordgo.MessageCreate) {
 	}
 	//fmt.Println(m.GuildIDO
 
-	if assignroles_s.isInUse && assignroles_s.AuthorID == m.Author.ID {
-		_, err := s.ChannelMessageSend(m.ChannelID, "[:sparkles:] Trying to fetch spreadsheet from URL: \""+m.Content+"\"")
+	/* REMOVE THIS LATER, NO LONGER NEEDED?
+	if updateRoles_s.isInUse && updateRoles_s.AuthorID == m.Author.ID {
+		_, err := s.ChannelMessageSend(m.ChannelID, "[:sparkles:] Updating races! ")
 		if err != nil {
 			fmt.Println(err)
 		}
-		assignroles_s.isInUse = false //reset the data so /assignroles can be used again
+		updaterace(s, m)              //testing
+		updateRoles_s.isInUse = false //reset the data so /assignroles can be used again
 	}
+	*/
 }
 
 // Executes with side effects and returns final message to be send
@@ -215,6 +229,7 @@ func test(s *discordgo.Session, m *discordgo.MessageCreate) string {
 	return message
 }
 
+// Delete roles that were assigned?
 func undo(s *discordgo.Session, m *discordgo.MessageCreate) {
 	for _, v := range newly_created_roles {
 		//s.State.RoleRemove(m.Member.GuildID, v)
@@ -223,7 +238,7 @@ func undo(s *discordgo.Session, m *discordgo.MessageCreate) {
 	}
 }
 
-// Build a map of  he desired user state (discord roles) from google sheets
+// Build a map of he desired user state (discord roles) from google sheets
 // see: https://developers.google.com/sheets/api/guides/concepts
 func get_desired_state(players map[string]player_t) map[string]player_t {
 
@@ -281,40 +296,97 @@ func get_desired_state(players map[string]player_t) map[string]player_t {
 		d = strings.TrimPrefix(d, "[")
 		d = strings.TrimSuffix(d, "]")
 
-		//Get the players discord user_ID
-
 		//add player data to the map
 		players[a] = player_t{discord_Name: b,
 			race:      c,
 			usergroup: d}
 	}
 
-	/* usage goal:
-	players["screen-name"].discord_Name = bob#1337
-	players["screen-name"].race = zerg
-	//and so on..
-	*/
-
 	return players
 }
 
-// Testinggg
-//maps screenname to player_t (holds info such as discord username, starcraft race, etc..)
-func testinggg() {
-	// get info from google sheets
-	players_m := make(map[string]player_t)
-	players_m = get_desired_state(players_m)
+/* Testing:
+##### */
+func updaterace(dg *discordgo.Session, m *discordgo.MessageCreate) {
+	// 0. Get all the roles from the discord and make a map
+	// roles_m["role_name"].*discordgo.Role
+	allDiscordRoles, err := dg.GuildRoles(SERVER_ID)
+	checkError(err)
+	roles_m := make(map[string]*discordgo.Role)
+	for _, b := range allDiscordRoles {
+		roles_m[b.Name] = b
+	}
 
-	// Iterate through all screennames listed on the google-sheet
-	//for screenName, b := range players_m {
+	// 1. Get all the users in the discord
+	allDiscordUsers_s, err := dg.GuildMembers(SERVER_ID, "", 1000)
+	checkError(err)
 
-	// 1. get their discord user_Id
+	// 2. Create map of username#discriminator to discord_id
+	// and also a map of discord_id -> bool to check if they exist
+	discord_name_to_id_m := make(map[string]string)
+	discord_id_exists := make(map[string]bool)
+	for _, u := range allDiscordUsers_s {
+		discord_name_to_id_m[u.User.String()] = u.User.ID
+		discord_id_exists[u.User.ID] = true
+	}
 
-	os.Exit(0)
+	// 3. Get desired state of roles from google sheets
+	sheetUsers_m := make(map[string]player_t)
+	sheetUsers_m = get_desired_state(sheetUsers_m)
 
+	// 4. Check if the user from sheet have desired race assigned
+	// and if not -> assign it!
+	for screen_name, _ := range sheetUsers_m {
+		a := sheetUsers_m[screen_name].discord_Name
+		cordUserid := discord_name_to_id_m[a]
+
+		// Check if the user even exists on the server
+		if !discord_id_exists[cordUserid] {
+			fmt.Println("Error: couldn't find the user", screen_name, "on discord")
+			continue // skip if the user doesn't exist
+		}
+
+		// If zerg, assign zerg and unassign terran+p
+		wishRace := sheetUsers_m[screen_name].race
+		switch wishRace {
+		case "Zerg":
+			err := dg.GuildMemberRoleAdd(SERVER_ID, cordUserid, ZERG_ROLE_ID)
+			checkError(err)
+			err = dg.GuildMemberRoleRemove(SERVER_ID, cordUserid, TERRAN_ROLE_ID)
+			checkError(err)
+			err = dg.GuildMemberRoleRemove(SERVER_ID, cordUserid, PROTOSS_ROLE_ID)
+			checkError(err)
+
+		case "Terran":
+			err := dg.GuildMemberRoleAdd(SERVER_ID, cordUserid, TERRAN_ROLE_ID)
+			checkError(err)
+			err = dg.GuildMemberRoleRemove(SERVER_ID, cordUserid, PROTOSS_ROLE_ID)
+			checkError(err)
+			err = dg.GuildMemberRoleRemove(SERVER_ID, cordUserid, ZERG_ROLE_ID)
+			checkError(err)
+
+		case "Protoss":
+			err := dg.GuildMemberRoleAdd(SERVER_ID, cordUserid, PROTOSS_ROLE_ID)
+			checkError(err)
+			err = dg.GuildMemberRoleRemove(SERVER_ID, cordUserid, TERRAN_ROLE_ID)
+			checkError(err)
+			err = dg.GuildMemberRoleRemove(SERVER_ID, cordUserid, ZERG_ROLE_ID)
+			checkError(err)
+		}
+		cordMessage := fmt.Sprintf("Assigned %s to %s", screen_name, wishRace)
+		_, err = dg.ChannelMessageSend(m.ChannelID, cordMessage)
+		if err != nil {
+			fmt.Println(err)
+		}
+	}
+	//##### End of testing
 }
 
 func main() {
+
+	/* Startup procedures:
+	#####	*/
+
 	// Check to make sure a bot auth token was supplied on startup
 	if len(os.Args) < 2 || len(os.Args) > 2 {
 		fmt.Println("Error: You must supply EXACTLY one argument (the bot's authorization token) on startup.")
@@ -344,28 +416,10 @@ func main() {
 		fmt.Println("Error opening connection", err)
 		os.Exit(1)
 	}
+	//##### End of startup procedures
 
-	/* TESTING IN MAIN
-	##################
-	*/
-
-	// 1. Get all the users in the discord
-	all_discord_users, err := dg.GuildMembers(SERVER_ID, "", 1000)
-
-	// 2. Map username#discriminator to discord_id
-	discord_name_to_id_map := make(map[string]string)
-	for _, u := range all_discord_users {
-		discord_name_to_id_map[u.User.String()] = u.User.ID
-	}
-
-	fmt.Println(discord_name_to_id_map)
-
-	// Just Testing
-	//testinggg()
-
-	/* END OF TEST IN MAIN
-	#################
-	*/
+	/* Shutdown procedures
+	##### */
 
 	// Keep running until exit signal is received..
 	fmt.Println("Bot is running..")
@@ -376,4 +430,6 @@ func main() {
 	// Gracefully close down the Discord session on exit
 	dg.Close()
 	fmt.Printf("\nBot exited gracefully.\n")
+
+	//##### end of shutdown procedures
 }
