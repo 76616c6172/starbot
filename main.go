@@ -16,16 +16,22 @@ import (
 )
 
 /* #####
-// IMPORTANT HARDCODED VALUES
+Global vars
+##### */
+var newly_created_roles []string // Holds newly created discord role IDs
+var updateRoles_s rolesCmd_t     // info about /update roles command while being used
+//##### End of global vars
+
+/* #####
+IMPORTANT HARDCODED CONSTANTS
+##### */
+
 // The values here all need to be set correctly for all functionality to work!
-*/
+
 // Hardcode all IDs that are allowed to use potentially dangerous administrative actions, such as /assignroles
 var AUTHORIZED_USERS = map[string]bool{
 	"96492516966174720": true, //valar
 }
-
-var newly_created_roles []string // Holds newly created discord role IDs
-var updateRoles_s rolesCmd_t     // info about /update roles command while being used
 
 const SPREADSHEET_ID string = "1K-jV6-CUmjOSPW338MS8gXAYtYNW9qdMeB7XMEiQyn0" // google sheet ID
 const SERVER_ID string = "856762567414382632"                                // the discord server ID
