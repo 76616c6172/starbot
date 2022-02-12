@@ -16,17 +16,9 @@ import (
 )
 
 /* #####
-Global vars
-##### */
-var newly_created_roles []string // Holds newly created discord role IDs
-var updateRoles_s rolesCmd_t     // info about /update roles command while being used
-//##### End of global vars
-
-/* #####
 IMPORTANT HARDCODED CONSTANTS
+The values here all need to be set correctly for all functionality to work!
 ##### */
-
-// The values here all need to be set correctly for all functionality to work!
 
 // Hardcode all IDs that are allowed to use potentially dangerous administrative actions, such as /assignroles
 var AUTHORIZED_USERS = map[string]bool{
@@ -50,7 +42,7 @@ const PLAYER_ROLE_ID string = "942083605667131443"
 const AVAILABLE_COMMANDS string = `
 [ /help        - show commands                        ]
 [ /test        - test command                         ]
-[ /delete      - delete roles                         ]
+[ /deleteroles - delete bot created roles             ]
 [ /updateroles - update roles from google spreadsheet ]
 `
 
@@ -93,7 +85,14 @@ type rolesCmd_t struct {
 
 //##### End of data structures
 
-// error check as a func because it's annoying to write "if err != nil { .. .. }" over and over
+/* #####
+Global vars
+##### */
+var newly_created_roles []string // Holds newly created discord role IDs
+var updateRoles_s rolesCmd_t     // info about /update roles command while being used
+//##### End of global vars
+
+// error check as a func because it's annoying to write "if err != nil { ... }" over and over
 func checkError(err error) {
 	if err != nil {
 		fmt.Println(err)
@@ -111,8 +110,8 @@ func scan_message(s *discordgo.Session, m *discordgo.MessageCreate) {
 
 	// Respond to specific messages
 	switch m.Content {
-	case "/undo":
-		undo(s, m)
+	case "/deleteroles":
+		deleteroles(s, m)
 		_, err := s.ChannelMessageSend(m.ChannelID, "Deleted roles.")
 		if err != nil {
 			fmt.Println(err)
@@ -124,7 +123,7 @@ func scan_message(s *discordgo.Session, m *discordgo.MessageCreate) {
 		}
 	case "/updateroles":
 		if updateRoles_s.isInUse { //check if this command is in use first and disallow simultanious use
-			_, err := s.ChannelMessageSend(m.ChannelID, "[:exclamation:] Error, `/updateroles` is currently in use. Unable to comply.\nIf you are trying to assign roles, please post a link to the spreadsheet you want me to use.")
+			_, err := s.ChannelMessageSend(m.ChannelID, DIFF_MSG_START+"- /updateroles ERROR: EXECUTION IN PROGRESS"+DIFF_MSG_END)
 			if err != nil {
 				fmt.Println(err)
 			}
@@ -151,7 +150,7 @@ func scan_message(s *discordgo.Session, m *discordgo.MessageCreate) {
 			return
 
 		} else {
-			_, err := s.ChannelMessageSend(m.ChannelID, "[☆] You are "+m.Author.Username+"\n[☆] Authorization: denied."+m.Author.ID)
+			_, err := s.ChannelMessageSend(m.ChannelID, DIFF_MSG_START+"- /updateroles ERROR: "+m.Author.Username+" IS NOT AUTHORIZED"+DIFF_MSG_END)
 			if err != nil {
 				fmt.Println(err)
 			}
@@ -176,7 +175,6 @@ func scan_message(s *discordgo.Session, m *discordgo.MessageCreate) {
 			fmt.Println(err)
 		}
 	}
-	//fmt.Println(m.GuildIDO
 
 	/* REMOVE THIS LATER, NO LONGER NEEDED?
 	if updateRoles_s.isInUse && updateRoles_s.AuthorID == m.Author.ID {
@@ -190,7 +188,7 @@ func scan_message(s *discordgo.Session, m *discordgo.MessageCreate) {
 	*/
 }
 
-// Executes with side effects and returns final message to be send
+// Test function executes with side effects and returns final message to be send
 func test(s *discordgo.Session, m *discordgo.MessageCreate) string {
 	//x := m.Author.Username //the username without nums
 	y := m.Author.String()
@@ -250,8 +248,8 @@ func test(s *discordgo.Session, m *discordgo.MessageCreate) string {
 	return message
 }
 
-// Delete roles that were assigned?
-func undo(s *discordgo.Session, m *discordgo.MessageCreate) {
+// WIP: Delete roles that were assigned?
+func deleteroles(s *discordgo.Session, m *discordgo.MessageCreate) {
 	for _, v := range newly_created_roles {
 		//s.State.RoleRemove(m.Member.GuildID, v)
 		s.GuildRoleDelete(m.GuildID, v)
@@ -259,7 +257,7 @@ func undo(s *discordgo.Session, m *discordgo.MessageCreate) {
 	}
 }
 
-// Build a map of he desired user state (discord roles) from google sheets
+// Builds a map of the desired user state (discord roles) from google sheets
 // see: https://developers.google.com/sheets/api/guides/concepts
 func get_sheet_state(players map[string]player_t) map[string]player_t {
 
@@ -461,10 +459,9 @@ func main() {
 		os.Exit(1)
 	}
 
-	// This is the auth token that allows us to interact with the discord api through a registered bot
-	TOKEN := os.Args[1]
+	TOKEN := os.Args[1] // discord API Token
 
-	// Returns dg which is of type session!
+	// Returns dg of type *session points to the data structures of active session
 	dg, err := discordgo.New("Bot " + TOKEN)
 	if err != nil {
 		fmt.Println("Error creating discord session", err)
@@ -473,9 +470,9 @@ func main() {
 	// Register scan_message as a callback func for message events
 	dg.AddHandler(scan_message)
 
-	// Exclusively care about receiving message events
-	//dg.Identify.Intents = discordgo.IntentsGuildMessages
-	dg.Identify.Intents = discordgo.IntentsAll
+	// Determines which types of events we will receive from discord
+	dg.Identify.Intents = discordgo.IntentsGuildMessages // Exclusively care about receiving message events
+	//dg.Identify.Intents = discordgo.IntentsAll
 	//dg.Identify.Intents = discordgo.IntentsGuilds
 
 	// Establish the discord session through discord bot api
