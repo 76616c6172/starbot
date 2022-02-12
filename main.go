@@ -31,10 +31,18 @@ const TERRAN_ROLE_ID string = "941808071817187389"
 const PROTOSS_ROLE_ID string = "941808145993441331"
 
 // help cmd text
-const AVAILABLE_COMMANDS string = `Available Commands:
-/test - testing
-/undo - deletes the roles that were assigned the last time (FIXME: does not carry over on bot reboot)
-/updateroles - automatically reassigns terran/zerg/protoss based on google-sheet (special access privileges required)`
+const AVAILABLE_COMMANDS string = `
+[ /help        - show commands                        ]
+[ /test        - test command                         ]
+[ /delete      - delete roles                         ]
+[ /updateroles - update roles from google spreadsheet ]
+`
+
+// Discord message formatting strings
+const DIFF_MSG_START string = "```diff\n"
+const DIFF_MSG_END string = "\n```"
+const FIX_MSG_START string = "```fix\n"
+const FIX_MSG_END string = "\n```"
 
 //##### End of Hardcoded values
 
@@ -110,7 +118,7 @@ func scan_message(s *discordgo.Session, m *discordgo.MessageCreate) {
 			return
 		}
 		if AUTHORIZED_USERS[m.Author.ID] { // if the user is authorized, proceed with the operation
-			_, err := s.ChannelMessageSend(m.ChannelID, "> "+m.Author.Username+" used /updateroles ...\n")
+			_, err := s.ChannelMessageSend(m.ChannelID, FIX_MSG_START+"+ /updateroles EXECUTION HAS STARTED"+FIX_MSG_END)
 			if err != nil {
 				fmt.Println(err)
 				return
@@ -119,9 +127,9 @@ func scan_message(s *discordgo.Session, m *discordgo.MessageCreate) {
 			updateRoles_s.session = s
 			updateRoles_s.AuthorID = m.Author.ID
 			updateRoles_s.ChannelID = m.ChannelID
-			updaterace(s, m)              //testing new command
+			update_roles(s, m)            //testing new command
 			updateRoles_s.isInUse = false //reset the data so /updateroles can be used again
-			_, err = s.ChannelMessageSend(m.ChannelID, "Role update: done.\n")
+			_, err = s.ChannelMessageSend(m.ChannelID, DIFF_MSG_START+"+ /updateroles EXECUTION HAS FINISHED"+DIFF_MSG_END)
 			if err != nil {
 				fmt.Println(err)
 				return
@@ -150,7 +158,7 @@ func scan_message(s *discordgo.Session, m *discordgo.MessageCreate) {
 		// =====================================================================
 
 	case "/help":
-		_, err := s.ChannelMessageSend(m.ChannelID, AVAILABLE_COMMANDS)
+		_, err := s.ChannelMessageSend(m.ChannelID, "```ini\n"+AVAILABLE_COMMANDS+"\n```")
 		if err != nil {
 			fmt.Println(err)
 		}
@@ -163,7 +171,7 @@ func scan_message(s *discordgo.Session, m *discordgo.MessageCreate) {
 		if err != nil {
 			fmt.Println(err)
 		}
-		updaterace(s, m)              //testing
+		update_roles(s, m)              //testing
 		updateRoles_s.isInUse = false //reset the data so /assignroles can be used again
 	}
 	*/
@@ -253,22 +261,22 @@ func get_desired_state(players map[string]player_t) map[string]player_t {
 	checkError(err)
 
 	// Read sheet name cells from spreadsheet
-	target_screen_names := "Player List" + "!A2:A"
+	target_screen_names := "Player List" + "!A1:A"
 	screenNameResp, err := srv.Spreadsheets.Values.Get(SPREADSHEET_ID, target_screen_names).Do()
 	checkError(err)
 
 	// Read discord name cells from spreadsheet
-	target_discord_names := "Player List" + "!B2:B"
+	target_discord_names := "Player List" + "!B1:B"
 	discord_NameResp, err := srv.Spreadsheets.Values.Get(SPREADSHEET_ID, target_discord_names).Do()
 	checkError(err)
 
 	// Read race cells from spreadsheet
-	target_ingame_race := "Player List" + "!E2:E"
+	target_ingame_race := "Player List" + "!E1:E"
 	ingameRaceResp, err := srv.Spreadsheets.Values.Get(SPREADSHEET_ID, target_ingame_race).Do()
 	checkError(err)
 
 	// Read usergroup cells from spreadsheet
-	target_usergroup := "Player List" + "!C2:C"
+	target_usergroup := "Player List" + "!C1:C"
 	usergroupResp, err := srv.Spreadsheets.Values.Get(SPREADSHEET_ID, target_usergroup).Do()
 	checkError(err)
 
@@ -305,9 +313,9 @@ func get_desired_state(players map[string]player_t) map[string]player_t {
 	return players
 }
 
-/* Testing:
+/* WIP: Assign roles based on desired
 ##### */
-func updaterace(dg *discordgo.Session, m *discordgo.MessageCreate) {
+func update_roles(dg *discordgo.Session, m *discordgo.MessageCreate) {
 	// 0. Get all the roles from the discord and make a map
 	// roles_m["role_name"].*discordgo.Role
 	allDiscordRoles, err := dg.GuildRoles(SERVER_ID)
@@ -331,13 +339,13 @@ func updaterace(dg *discordgo.Session, m *discordgo.MessageCreate) {
 	}
 
 	// 3. Get desired state of roles from google sheets
-	sheetUsers_m := make(map[string]player_t)
-	sheetUsers_m = get_desired_state(sheetUsers_m)
+	sheetUsrState := make(map[string]player_t)
+	sheetUsrState = get_desired_state(sheetUsrState)
 
 	// 4. Check if the user from sheet have desired race assigned
 	// and if not -> assign it!
-	for screen_name, _ := range sheetUsers_m {
-		a := sheetUsers_m[screen_name].discord_Name
+	for screen_name, _ := range sheetUsrState {
+		a := sheetUsrState[screen_name].discord_Name
 		cordUserid := discord_name_to_id_m[a]
 
 		// Check if the user even exists on the server
@@ -347,7 +355,7 @@ func updaterace(dg *discordgo.Session, m *discordgo.MessageCreate) {
 		}
 
 		// If zerg, assign zerg and unassign terran+p
-		wishRace := sheetUsers_m[screen_name].race
+		wishRace := sheetUsrState[screen_name].race
 		switch wishRace {
 		case "Zerg":
 			err := dg.GuildMemberRoleAdd(SERVER_ID, cordUserid, ZERG_ROLE_ID)
@@ -373,7 +381,7 @@ func updaterace(dg *discordgo.Session, m *discordgo.MessageCreate) {
 			err = dg.GuildMemberRoleRemove(SERVER_ID, cordUserid, ZERG_ROLE_ID)
 			checkError(err)
 		}
-		cordMessage := fmt.Sprintf("Assigned %s to %s", screen_name, wishRace)
+		cordMessage := fmt.Sprintf("> Assigned <@%s> %s to %s\n", cordUserid, screen_name, wishRace)
 		_, err = dg.ChannelMessageSend(m.ChannelID, cordMessage)
 		if err != nil {
 			fmt.Println(err)
