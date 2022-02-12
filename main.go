@@ -66,14 +66,6 @@ type player_t struct {
 	usergroup    string
 }
 
-// error check as a func because it's annoying to write "if err != nil { .. .. }" over and over
-func checkError(err error) {
-	if err != nil {
-		fmt.Println(err)
-		//panic(err.Error())
-	}
-}
-
 // Struct to store information about a team-role
 type team_t struct {
 	name               string
@@ -95,6 +87,14 @@ type rolesCmd_t struct {
 var updateRoles_s rolesCmd_t
 
 //##### End of data structures
+
+// error check as a func because it's annoying to write "if err != nil { .. .. }" over and over
+func checkError(err error) {
+	if err != nil {
+		fmt.Println(err)
+		//panic(err.Error())
+	}
+}
 
 // Is called by AddHandler every time a new message is created - on ANY channel the bot has access to
 func scan_message(s *discordgo.Session, m *discordgo.MessageCreate) {
