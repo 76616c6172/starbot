@@ -24,6 +24,9 @@ var AUTHORIZED_USERS = map[string]bool{
 	"96492516966174720": true, //valar
 }
 
+// Holds newly created discord role IDs
+var newly_created_roles []string
+
 const SPREADSHEET_ID string = "1K-jV6-CUmjOSPW338MS8gXAYtYNW9qdMeB7XMEiQyn0" // google sheet ID
 const SERVER_ID string = "856762567414382632"                                // the discord server ID
 const ZERG_ROLE_ID string = "941808009984737281"
@@ -55,8 +58,6 @@ const FIX_MSG_END string = "\n```"
 
 /* DATA STRUCTURES
 ##### */
-
-var newly_created_roles []string
 
 type player_t struct {
 	discord_Name string
