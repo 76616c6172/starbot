@@ -4,12 +4,14 @@ automating away tedious administrative tasks.
 
 ## Completed features
 1. `/updateroles`  
-- Automatically reassigns correct race role based on google sheet
-  (requires hardcoded user AUTHORIZED_USERS, valid google API token,
-  spreadsheet ID, and correct role ID strings.
+- Automatically assigns Terran/Zerg/Protoss and Coach/Player/Assistant
+  roles based on google sheet
+  (requires hardcoded AUTHORIZED_USERS, valid google API Token,
+  correct spreadsheet ID, and correct role ID strings.
 
 ## WIP/Roadmap/Planned features
-1. Automatically create and assign teams based on google-sheets
+1. Automatically create/track assign teams based on google-sheets
+1. Track user name changes and update google-sheets
 
 ## Usage:
 ```bash

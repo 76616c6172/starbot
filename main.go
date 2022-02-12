@@ -29,6 +29,13 @@ const SERVER_ID string = "856762567414382632"                                // 
 const ZERG_ROLE_ID string = "941808009984737281"
 const TERRAN_ROLE_ID string = "941808071817187389"
 const PROTOSS_ROLE_ID string = "941808145993441331"
+const TIER0_ROLE_ID string = "941808145993441331"
+const TIER1_ROLE_ID string = "942081263358070794"
+const TIER2_ROLE_ID string = "942081322325794839"
+const TIER3_ROLE_ID string = "942081409500213308"
+const COACH_ROLE_ID string = "942083540739317811"
+const ASST_COACH_ROLE_ID string = "941808582410764288"
+const PLAYER_ROLE_ID string = "942083605667131443"
 
 // help cmd text
 const AVAILABLE_COMMANDS string = `
@@ -54,6 +61,7 @@ var newly_created_roles []string
 type player_t struct {
 	discord_Name string
 	discord_ID   string
+	tier         string
 	race         string
 	usergroup    string
 }
@@ -248,7 +256,7 @@ func undo(s *discordgo.Session, m *discordgo.MessageCreate) {
 
 // Build a map of he desired user state (discord roles) from google sheets
 // see: https://developers.google.com/sheets/api/guides/concepts
-func get_desired_state(players map[string]player_t) map[string]player_t {
+func get_sheet_state(players map[string]player_t) map[string]player_t {
 
 	// Read the secret file (google api key to access google sheets)
 	data, err := ioutil.ReadFile("secret.json")
@@ -279,6 +287,11 @@ func get_desired_state(players map[string]player_t) map[string]player_t {
 	target_usergroup := "Player List" + "!C1:C"
 	usergroupResp, err := srv.Spreadsheets.Values.Get(SPREADSHEET_ID, target_usergroup).Do()
 	checkError(err)
+
+	// Read player tier from.. teams sheet
+	//target_usergroup := "Player List" + "!C1:C"
+	//usergroupResp, err := srv.Spreadsheets.Values.Get(SPREADSHEET_ID, target_usergroup).Do()
+	//checkError(err)
 
 	//Extract the screen names of the players
 	//for _, row := range resp.Values {
@@ -340,9 +353,9 @@ func update_roles(dg *discordgo.Session, m *discordgo.MessageCreate) {
 
 	// 3. Get desired state of roles from google sheets
 	sheetUsrState := make(map[string]player_t)
-	sheetUsrState = get_desired_state(sheetUsrState)
+	sheetUsrState = get_sheet_state(sheetUsrState)
 
-	// 4. Check if the user from sheet have desired race assigned
+	// 4. Check if the user from sheet have desired roles assigned
 	// and if not -> assign it!
 	for screen_name, _ := range sheetUsrState {
 		a := sheetUsrState[screen_name].discord_Name
@@ -353,8 +366,45 @@ func update_roles(dg *discordgo.Session, m *discordgo.MessageCreate) {
 			fmt.Println("Error: couldn't find the user", screen_name, "on discord")
 			continue // skip if the user doesn't exist
 		}
+		// Assign Coach/Assistant Coach/ Player
+		didAssignGroupRole := false // set to true if we assigned Coach, Assistant Coach, or Player role.
+		wishGroup := sheetUsrState[screen_name].usergroup
+		switch wishGroup {
+		case "Player":
+			err := dg.GuildMemberRoleAdd(SERVER_ID, cordUserid, PLAYER_ROLE_ID)
+			checkError(err)
+			err = dg.GuildMemberRoleRemove(SERVER_ID, cordUserid, COACH_ROLE_ID)
+			checkError(err)
+			err = dg.GuildMemberRoleRemove(SERVER_ID, cordUserid, ASST_COACH_ROLE_ID)
+			checkError(err)
+			didAssignGroupRole = true
+		case "Coach":
+			err := dg.GuildMemberRoleAdd(SERVER_ID, cordUserid, COACH_ROLE_ID)
+			checkError(err)
+			err = dg.GuildMemberRoleRemove(SERVER_ID, cordUserid, PLAYER_ROLE_ID)
+			checkError(err)
+			err = dg.GuildMemberRoleRemove(SERVER_ID, cordUserid, ASST_COACH_ROLE_ID)
+			checkError(err)
+			didAssignGroupRole = true
+		case "Assistant Coach":
+			err := dg.GuildMemberRoleAdd(SERVER_ID, cordUserid, ASST_COACH_ROLE_ID)
+			checkError(err)
+			err = dg.GuildMemberRoleRemove(SERVER_ID, cordUserid, PLAYER_ROLE_ID)
+			checkError(err)
+			err = dg.GuildMemberRoleRemove(SERVER_ID, cordUserid, COACH_ROLE_ID)
+			checkError(err)
+			didAssignGroupRole = true
 
-		// If zerg, assign zerg and unassign terran+p
+		}
+		if didAssignGroupRole {
+			cordMessage1 := fmt.Sprintf("> Assigned <@%s> %s to %s\n", cordUserid, screen_name, wishGroup)
+			_, err = dg.ChannelMessageSend(m.ChannelID, cordMessage1)
+			checkError(err)
+			didAssignGroupRole = false
+		}
+
+		// Assign Zerg/Terran/Protoss
+		didAssignRaceRole := false // set to true if we assigned Zerg, Terran, or Protoss role.
 		wishRace := sheetUsrState[screen_name].race
 		switch wishRace {
 		case "Zerg":
@@ -364,6 +414,7 @@ func update_roles(dg *discordgo.Session, m *discordgo.MessageCreate) {
 			checkError(err)
 			err = dg.GuildMemberRoleRemove(SERVER_ID, cordUserid, PROTOSS_ROLE_ID)
 			checkError(err)
+			didAssignRaceRole = true
 
 		case "Terran":
 			err := dg.GuildMemberRoleAdd(SERVER_ID, cordUserid, TERRAN_ROLE_ID)
@@ -372,6 +423,7 @@ func update_roles(dg *discordgo.Session, m *discordgo.MessageCreate) {
 			checkError(err)
 			err = dg.GuildMemberRoleRemove(SERVER_ID, cordUserid, ZERG_ROLE_ID)
 			checkError(err)
+			didAssignRaceRole = true
 
 		case "Protoss":
 			err := dg.GuildMemberRoleAdd(SERVER_ID, cordUserid, PROTOSS_ROLE_ID)
@@ -380,11 +432,14 @@ func update_roles(dg *discordgo.Session, m *discordgo.MessageCreate) {
 			checkError(err)
 			err = dg.GuildMemberRoleRemove(SERVER_ID, cordUserid, ZERG_ROLE_ID)
 			checkError(err)
+			didAssignRaceRole = true
+
 		}
-		cordMessage := fmt.Sprintf("> Assigned <@%s> %s to %s\n", cordUserid, screen_name, wishRace)
-		_, err = dg.ChannelMessageSend(m.ChannelID, cordMessage)
-		if err != nil {
-			fmt.Println(err)
+		if didAssignRaceRole {
+			cordMessage2 := fmt.Sprintf("> Assigned <@%s> %s to %s\n", cordUserid, screen_name, wishRace)
+			_, err = dg.ChannelMessageSend(m.ChannelID, cordMessage2)
+			checkError(err)
+			didAssignRaceRole = false
 		}
 	}
 	//##### End of testing
