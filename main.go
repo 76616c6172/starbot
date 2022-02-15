@@ -277,27 +277,19 @@ func get_sheet_state(players map[string]player_t) map[string]player_t {
 	// 1. Get teams sheet data without crashing on empty cells etc
 
 	// Prints the names and majors of students in a sample spreadsheet:
-	spreadsheetId := "1V7i2ZJxrp3OboMyx6HPwkad_VyO-uykFpzwDGCJjD7g"
-	readRange := "Class Data!A2:E"
-	resp, err := srv.Spreadsheets.Values.Get(spreadsheetId, readRange).Do()
+	//spreadsheetId := "1V7i2ZJxrp3OboMyx6HPwkad_VyO-uykFpzwDGCJjD7g"
+	//readRange := "Class Data!A2:E"
+	targetTeams := "Teams" + "!A1:Z"
+	resp, err := srv.Spreadsheets.Values.Get(SPREADSHEET_ID, targetTeams).Do()
 	if err != nil {
 		log.Fatalf("Unable to retrieve data from sheet: %v", err)
 	}
 
-	// ERROR: Wow this is so stupid! This panics and crashes when a cell it's trying to read is empty
-	// WTF. This is a google provided library, are you serious??
-	if len(resp.Values) == 0 {
-		fmt.Println("No data found.")
-	} else {
-		fmt.Println("Name, Major:")
-		for _, row := range resp.Values {
-			// Print columns A and E, which correspond to indices 0 and 4.
-			fmt.Printf("%s, %s\n", row[0], row[4])
-		}
+	for a, b := range resp.Values {
+		fmt.Println(a, b)
 	}
 
 	checkError(err)
-
 	return players
 
 	// #########
@@ -515,11 +507,16 @@ func main() {
 	}
 	//##### End of startup procedures
 
-	// WIP update-teams #########################################
+	/* TESTING WIP:
+	##### */
 
 	//Get desired state of roles from google sheets
 	sheetUsrState := make(map[string]player_t)
 	sheetUsrState = get_sheet_state(sheetUsrState)
+
+	dg.Close()
+	fmt.Printf("\nBot exited gracefully.\n")
+	//##### End of Testing
 
 	/* Shutdown procedures
 	##### */
