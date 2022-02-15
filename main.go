@@ -42,6 +42,9 @@ const PLAYER_ROLE_ID string = "942083605667131443"
 // Constants for use on get_sheet_state logic
 const STAFF int = -1
 const COACHES int = -2
+const ASSISTANTCOACH int = -3
+const PLAYER_AND_ASSITANT_COACH int = -4
+const PLAYER int = -5
 const TIER0 int = 0
 const TIER1 int = 1
 const TIER2 int = 2
@@ -85,9 +88,10 @@ var GROUP int = 0
 type player_t struct {
 	discord_Name string
 	discord_ID   string
-	tier         string
+	tier         int //can be 0, 1, 2, or 3
+	usergroup    int
 	race         string
-	usergroup    string
+	team         string
 }
 
 // Struct to store information about a team-role
@@ -298,113 +302,6 @@ func get_sheet_state(players map[string]player_t) map[string]player_t {
 	srv, err := sheets.New(client)
 	checkError(err)
 
-	/// ###########
-	// WIP - DESIRED FUNCTIONALITY:
-	// 1. Get teams sheet data without crashing on empty cells etc
-
-	targetTeams := "Teams" + "!A1:Z" // defines the sheet and range to be read
-	resp, err := srv.Spreadsheets.Values.Get(SPREADSHEET_ID, targetTeams).Do()
-	if err != nil {
-		log.Fatalf("Unable to retrieve data from sheet: %v", err)
-	}
-
-	// 1. Let's make a list of the teams
-	teams_a := resp.Values[0]
-
-	// [teamname].struct that holds various info such as the discord ID, the players
-	name_me := make(map[string]team_t)
-
-	sheetsTeamList := make([]string, 0)
-	// Extract the team names and put into the list
-	for _, b := range teams_a {
-		x := fmt.Sprint(b)
-		if len(x) == 0 { //skip empty cells
-			continue
-		} else {
-			sheetsTeamList = append(sheetsTeamList, x)
-			name_me[x] = team_t{
-				exists: true,
-				name:   x,
-			}
-		}
-	}
-
-	// 2. Let's associate the users with their team
-
-	fmt.Println(sheetsTeamList) // debug
-
-	isFirstRow := true
-	for _, collum := range resp.Values {
-		if isFirstRow { //skip the first row because it contains teamnames
-			isFirstRow = false
-			continue
-		}
-
-		//fmt.Println(rowNumber) //debug
-
-		var teamIndex int
-		for x, y := range collum {
-			z := fmt.Sprint(y)
-			if x == 0 {
-				teamIndex = 0
-			} else {
-				teamIndex = x / 2
-			}
-			switch z { //check which block we're on (coach or tier0 etc)
-			case "Staff":
-				GROUP = STAFF
-				continue
-			case "Coaches":
-				GROUP = COACHES
-				continue
-			case "Tier 0":
-				GROUP = TIER0
-				continue
-			case "Tier 1":
-				GROUP = TIER1
-				continue
-			case "Tier 2":
-				GROUP = TIER2
-				continue
-			case "Tier 3":
-				GROUP = TIER3
-				continue
-			}
-			if NOT_PLAYER_NAME[z] { // skip entry if not player
-				continue
-			}
-			//associate the user with the right team
-			switch GROUP {
-			case STAFF:
-				fmt.Println("STAFF:", teamIndex, x, z)
-			case COACHES:
-				fmt.Println("COACHES:", teamIndex, x, z)
-			case TIER0:
-				fmt.Println("TIER 0:", teamIndex, x, z)
-			case TIER1:
-				fmt.Println("TIER 1:", teamIndex, x, z)
-			case TIER2:
-				fmt.Println("TIER 2:", teamIndex, x, z)
-			case TIER3:
-				fmt.Println("TIER 3:", teamIndex, x, z)
-			}
-		}
-		//fmt.Println(rowNumber, collum)
-		fmt.Println("Next")
-		//teamIndex = 0 //reset, moving to the next row
-	}
-
-	fmt.Println("#####################\n\n")
-
-	/*
-		for a, b := range resp.Values {
-			fmt.Println(a, b)
-		}
-	*/
-
-	checkError(err)
-	return players
-
 	// #########
 	//######### end of testing
 
@@ -436,6 +333,7 @@ func get_sheet_state(players map[string]player_t) map[string]player_t {
 	//Extract the screen names of the players
 	//for _, row := range resp.Values {
 	// Loop over the data and add it to the players map
+	var ug int
 	for i := 0; i < len(screenNameResp.Values); i++ {
 		//Extract the screen name
 		a := fmt.Sprint(screenNameResp.Values[i])
@@ -457,11 +355,141 @@ func get_sheet_state(players map[string]player_t) map[string]player_t {
 		d = strings.TrimPrefix(d, "[")
 		d = strings.TrimSuffix(d, "]")
 
+		switch d {
+		case "Player":
+			ug = PLAYER
+		case "Coach":
+			ug = COACHES
+		case "Assistant Coach":
+			ug = ASSISTANTCOACH
+		default:
+			ug = PLAYER_AND_ASSITANT_COACH
+		}
+
 		//add player data to the map
-		players[a] = player_t{discord_Name: b,
-			race:      c,
-			usergroup: d}
+		players[a] = player_t{
+			discord_Name: b,
+			race:         c,
+			usergroup:    ug,
+		}
 	}
+
+	/// ###########
+	// WIP - DESIRED FUNCTIONALITY:
+	// 1. Get teams sheet data without crashing on empty cells etc
+
+	targetTeams := "Teams" + "!A1:Z" // defines the sheet and range to be read
+	resp, err := srv.Spreadsheets.Values.Get(SPREADSHEET_ID, targetTeams).Do()
+	if err != nil {
+		log.Fatalf("Unable to retrieve data from sheet: %v", err)
+	}
+
+	// 1. Let's make a list of the teams
+	teams_a := resp.Values[0]
+
+	// [teamname].struct that holds various info such as the discord ID, the players
+	teamsFromSheet := make(map[string]team_t)
+
+	sheetsTeamList := make([]string, 0)
+	// Extract the team names and put into the list
+	for _, b := range teams_a {
+		x := fmt.Sprint(b)
+		if len(x) == 0 { //skip empty cells
+			continue
+		} else {
+			sheetsTeamList = append(sheetsTeamList, x)
+			teamsFromSheet[x] = team_t{
+				exists: true,
+				name:   x,
+			}
+		}
+	}
+
+	// 2. Let's associate the users with their team
+
+	//fmt.Println(sheetsTeamList) // debug
+
+	isFirstRow := true
+	for _, collum := range resp.Values {
+		if isFirstRow { //skip the first row because it contains teamnames
+			isFirstRow = false
+			continue
+		}
+
+		var teamIndex int
+		for x, y := range collum {
+			screenName := fmt.Sprint(y)
+			if x == 0 {
+				teamIndex = 0
+			} else {
+				teamIndex = x / 2
+			}
+			switch screenName { //check which block we're on (coach or tier0 etc)
+			case "Staff":
+				GROUP = STAFF
+				continue
+			case "Coaches":
+				GROUP = COACHES
+				continue
+			case "Tier 0":
+				GROUP = TIER0
+				continue
+			case "Tier 1":
+				GROUP = TIER1
+				continue
+			case "Tier 2":
+				GROUP = TIER2
+				continue
+			case "Tier 3":
+				GROUP = TIER3
+				continue
+			}
+			if NOT_PLAYER_NAME[screenName] { // skip entry if not player
+				continue
+			}
+			//associate the user with the right team
+			switch GROUP {
+			case STAFF:
+				//fmt.Println("STAFF:", teamIndex, x, screenName) //debug
+				players[screenName] = player_t{
+					team:      sheetsTeamList[teamIndex],
+					usergroup: STAFF,
+				}
+			case COACHES:
+				//				fmt.Println("COACHES:", teamIndex, x, screenName) //debug
+				players[screenName] = player_t{
+					team:      sheetsTeamList[teamIndex],
+					usergroup: COACHES,
+				}
+			case TIER0:
+				//			fmt.Println("TIER 0:", teamIndex, x, screenName) //debug
+				players[screenName] = player_t{
+					tier: 0,
+					team: sheetsTeamList[teamIndex],
+				}
+			case TIER1:
+				//		fmt.Println("TIER 1:", teamIndex, x, screenName) //debug
+				players[screenName] = player_t{
+					tier: 1,
+					team: sheetsTeamList[teamIndex],
+				}
+			case TIER2:
+				//	fmt.Println("TIER 2:", teamIndex, x, screenName) //debug
+				players[screenName] = player_t{
+					tier: 2,
+					team: sheetsTeamList[teamIndex],
+				}
+			case TIER3:
+				//fmt.Println("TIER 3:", teamIndex, x, screenName) //debug
+				players[screenName] = player_t{
+					tier: 3,
+					team: sheetsTeamList[teamIndex],
+				}
+			}
+		}
+	}
+
+	checkError(err)
 
 	return players
 }
@@ -509,11 +537,12 @@ func update_roles(dg *discordgo.Session, m *discordgo.MessageCreate) {
 			fmt.Println("Error: couldn't find the user", screen_name, "on discord")
 			continue // skip if the user doesn't exist
 		}
+
 		// Assign Coach/Assistant Coach/ Player
 		didAssignGroupRole := false // set to true if we assigned Coach, Assistant Coach, or Player role.
 		wishGroup := sheetUsrState[screen_name].usergroup
 		switch wishGroup {
-		case "Player":
+		case PLAYER:
 			err := dg.GuildMemberRoleAdd(SERVER_ID, cordUserid, PLAYER_ROLE_ID)
 			checkError(err)
 			err = dg.GuildMemberRoleRemove(SERVER_ID, cordUserid, COACH_ROLE_ID)
@@ -521,7 +550,7 @@ func update_roles(dg *discordgo.Session, m *discordgo.MessageCreate) {
 			err = dg.GuildMemberRoleRemove(SERVER_ID, cordUserid, ASST_COACH_ROLE_ID)
 			checkError(err)
 			didAssignGroupRole = true
-		case "Coach":
+		case COACHES:
 			err := dg.GuildMemberRoleAdd(SERVER_ID, cordUserid, COACH_ROLE_ID)
 			checkError(err)
 			err = dg.GuildMemberRoleRemove(SERVER_ID, cordUserid, PLAYER_ROLE_ID)
@@ -529,7 +558,7 @@ func update_roles(dg *discordgo.Session, m *discordgo.MessageCreate) {
 			err = dg.GuildMemberRoleRemove(SERVER_ID, cordUserid, ASST_COACH_ROLE_ID)
 			checkError(err)
 			didAssignGroupRole = true
-		case "Assistant Coach":
+		case ASSISTANTCOACH:
 			err := dg.GuildMemberRoleAdd(SERVER_ID, cordUserid, ASST_COACH_ROLE_ID)
 			checkError(err)
 			err = dg.GuildMemberRoleRemove(SERVER_ID, cordUserid, PLAYER_ROLE_ID)
@@ -537,8 +566,8 @@ func update_roles(dg *discordgo.Session, m *discordgo.MessageCreate) {
 			err = dg.GuildMemberRoleRemove(SERVER_ID, cordUserid, COACH_ROLE_ID)
 			checkError(err)
 			didAssignGroupRole = true
-
 		}
+
 		if didAssignGroupRole {
 			cordMessage1 := fmt.Sprintf("> Assigned <@%s> %s to %s\n", cordUserid, screen_name, wishGroup)
 			_, err = dg.ChannelMessageSend(m.ChannelID, cordMessage1)
