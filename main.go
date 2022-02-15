@@ -276,18 +276,45 @@ func get_sheet_state(players map[string]player_t) map[string]player_t {
 	// WIP - DESIRED FUNCTIONALITY:
 	// 1. Get teams sheet data without crashing on empty cells etc
 
-	// Prints the names and majors of students in a sample spreadsheet:
-	//spreadsheetId := "1V7i2ZJxrp3OboMyx6HPwkad_VyO-uykFpzwDGCJjD7g"
-	//readRange := "Class Data!A2:E"
-	targetTeams := "Teams" + "!A1:Z"
+	targetTeams := "Teams" + "!A1:Z" // defines the sheet and range to be read
 	resp, err := srv.Spreadsheets.Values.Get(SPREADSHEET_ID, targetTeams).Do()
 	if err != nil {
 		log.Fatalf("Unable to retrieve data from sheet: %v", err)
 	}
 
-	for a, b := range resp.Values {
-		fmt.Println(a, b)
+	// 1. Let's make a list of the teams
+	teams_a := resp.Values[0]
+	sheetsTeamList := make([]string, 0)
+
+	// Extract the team names and put into the list
+	for _, b := range teams_a {
+		x := fmt.Sprint(b)
+		if len(x) == 0 { //skip empty cells
+			continue
+		} else {
+			sheetsTeamList = append(sheetsTeamList, x)
+		}
 	}
+
+	// 2. Let's associate the users with their team
+
+	fmt.Println(sheetsTeamList)
+
+	for rowNumber, collum := range resp.Values {
+		fmt.Println(rowNumber)
+		for y, z := range collum {
+			fmt.Println(y, z)
+		}
+		//fmt.Println(rowNumber, collum)
+	}
+
+	fmt.Println("#####################\n\n")
+
+	/*
+		for a, b := range resp.Values {
+			fmt.Println(a, b)
+		}
+	*/
 
 	checkError(err)
 	return players
@@ -516,6 +543,7 @@ func main() {
 
 	dg.Close()
 	fmt.Printf("\nBot exited gracefully.\n")
+	os.Exit(0)
 	//##### End of Testing
 
 	/* Shutdown procedures
