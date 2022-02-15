@@ -31,9 +31,9 @@ const SERVER_ID string = "856762567414382632"                                // 
 const ZERG_ROLE_ID string = "941808009984737281"
 const TERRAN_ROLE_ID string = "941808071817187389"
 const PROTOSS_ROLE_ID string = "941808145993441331"
-const TIER0_ROLE_ID string = "941808145993441331"
-const TIER1_ROLE_ID string = "942081263358070794"
-const TIER2_ROLE_ID string = "942081322325794839"
+const TIER0_ROLE_ID string = "942081263358070794"
+const TIER1_ROLE_ID string = "942081322325794839"
+const TIER2_ROLE_ID string = "942081354353487872"
 const TIER3_ROLE_ID string = "942081409500213308"
 const COACH_ROLE_ID string = "942083540739317811"
 const ASST_COACH_ROLE_ID string = "941808582410764288"
@@ -78,7 +78,7 @@ var NOT_PLAYER_NAME = map[string]bool{
 	"\t": true,
 }
 
-var GROUP int = 0
+//var GROUP int = 0
 
 //##### End of Hardcoded values
 
@@ -119,7 +119,7 @@ type rolesCmd_t struct {
 Global vars
 ##### */
 var newly_created_roles []string // Holds newly created discord role IDs
-var updateRoles_s rolesCmd_t     // info about /update roles command while being used
+var rolesCmd_s rolesCmd_t        // info about /update roles command while being used
 //##### End of global vars
 
 // error check as a func because it's annoying to write "if err != nil { ... }" over and over
@@ -152,7 +152,7 @@ func scan_message(s *discordgo.Session, m *discordgo.MessageCreate) {
 			fmt.Println(err)
 		}
 	case "/updateroles":
-		if updateRoles_s.isInUse { //check if this command is in use first and disallow simultanious use
+		if rolesCmd_s.isInUse { //check if this command is in use first and disallow simultanious use
 			_, err := s.ChannelMessageSend(m.ChannelID, DIFF_MSG_START+"- /updateroles ERROR: EXECUTION IN PROGRESS"+DIFF_MSG_END)
 			if err != nil {
 				fmt.Println(err)
@@ -165,12 +165,12 @@ func scan_message(s *discordgo.Session, m *discordgo.MessageCreate) {
 				fmt.Println(err)
 				return
 			}
-			updateRoles_s.isInUse = true
-			updateRoles_s.session = s
-			updateRoles_s.AuthorID = m.Author.ID
-			updateRoles_s.ChannelID = m.ChannelID
-			update_roles(s, m)            //testing new command
-			updateRoles_s.isInUse = false //reset the data so /updateroles can be used again
+			rolesCmd_s.isInUse = true
+			rolesCmd_s.session = s
+			rolesCmd_s.AuthorID = m.Author.ID
+			rolesCmd_s.ChannelID = m.ChannelID
+			update_roles(s, m)         //testing new command
+			rolesCmd_s.isInUse = false //reset the data so /updateroles can be used again
 			_, err = s.ChannelMessageSend(m.ChannelID, DIFF_MSG_START+"+ /updateroles EXECUTION HAS FINISHED"+DIFF_MSG_END)
 			if err != nil {
 				fmt.Println(err)
@@ -207,13 +207,13 @@ func scan_message(s *discordgo.Session, m *discordgo.MessageCreate) {
 	}
 
 	/* REMOVE THIS LATER, NO LONGER NEEDED?
-	if updateRoles_s.isInUse && updateRoles_s.AuthorID == m.Author.ID {
+	if rolesCmd_s.isInUse && rolesCmd_s.AuthorID == m.Author.ID {
 		_, err := s.ChannelMessageSend(m.ChannelID, "[:sparkles:] Updating races! ")
 		if err != nil {
 			fmt.Println(err)
 		}
 		update_roles(s, m)              //testing
-		updateRoles_s.isInUse = false //reset the data so /assignroles can be used again
+		rolesCmd_s.isInUse = false //reset the data so /assignroles can be used again
 	}
 	*/
 }
@@ -410,6 +410,7 @@ func get_sheet_state(players map[string]player_t) map[string]player_t {
 	//fmt.Println(sheetsTeamList) // debug
 
 	isFirstRow := true
+	var GROUP int = -99
 	for _, collum := range resp.Values {
 		if isFirstRow { //skip the first row because it contains teamnames
 			isFirstRow = false
@@ -480,7 +481,11 @@ func get_sheet_state(players map[string]player_t) map[string]player_t {
 					team: sheetsTeamList[teamIndex],
 				}
 			case TIER3:
-				//fmt.Println("TIER 3:", teamIndex, x, screenName) //debug
+				fmt.Println("TIER 3:", teamIndex, x, screenName) //debug
+				fmt.Println("\n\n\n")
+				fmt.Println("ALERT ALERT")
+				fmt.Println("#######################")
+				fmt.Println("\n\n\n")
 				players[screenName] = player_t{
 					tier: 3,
 					team: sheetsTeamList[teamIndex],
@@ -528,6 +533,14 @@ func update_roles(dg *discordgo.Session, m *discordgo.MessageCreate) {
 
 	// 4. Check if the user from sheet have desired roles assigned
 	// and if not -> assign it!
+	/* DEBUG CHECK
+	 */
+	fmt.Println("discord id:", sheetUsrState["SF)valar"].discord_ID)
+	fmt.Println("discord name:", sheetUsrState["SF)valar"].discord_Name)
+	fmt.Println("race:", sheetUsrState["SF)valar"].race)
+	fmt.Println("tier:", sheetUsrState["SF)valar"].tier)
+	fmt.Println("team:", sheetUsrState["SF)valar"].team)
+	fmt.Println("usergoup: ", sheetUsrState["SF)valar"].usergroup)
 	for screen_name, _ := range sheetUsrState {
 		a := sheetUsrState[screen_name].discord_Name
 		cordUserid := discord_name_to_id_m[a]
@@ -539,10 +552,12 @@ func update_roles(dg *discordgo.Session, m *discordgo.MessageCreate) {
 		}
 
 		// Assign Coach/Assistant Coach/ Player
+		group_name := ""
 		didAssignGroupRole := false // set to true if we assigned Coach, Assistant Coach, or Player role.
 		wishGroup := sheetUsrState[screen_name].usergroup
 		switch wishGroup {
 		case PLAYER:
+			group_name = "Player"
 			err := dg.GuildMemberRoleAdd(SERVER_ID, cordUserid, PLAYER_ROLE_ID)
 			checkError(err)
 			err = dg.GuildMemberRoleRemove(SERVER_ID, cordUserid, COACH_ROLE_ID)
@@ -551,6 +566,7 @@ func update_roles(dg *discordgo.Session, m *discordgo.MessageCreate) {
 			checkError(err)
 			didAssignGroupRole = true
 		case COACHES:
+			group_name = "Coach"
 			err := dg.GuildMemberRoleAdd(SERVER_ID, cordUserid, COACH_ROLE_ID)
 			checkError(err)
 			err = dg.GuildMemberRoleRemove(SERVER_ID, cordUserid, PLAYER_ROLE_ID)
@@ -559,6 +575,7 @@ func update_roles(dg *discordgo.Session, m *discordgo.MessageCreate) {
 			checkError(err)
 			didAssignGroupRole = true
 		case ASSISTANTCOACH:
+			group_name = "Assistant Coach"
 			err := dg.GuildMemberRoleAdd(SERVER_ID, cordUserid, ASST_COACH_ROLE_ID)
 			checkError(err)
 			err = dg.GuildMemberRoleRemove(SERVER_ID, cordUserid, PLAYER_ROLE_ID)
@@ -569,17 +586,19 @@ func update_roles(dg *discordgo.Session, m *discordgo.MessageCreate) {
 		}
 
 		if didAssignGroupRole {
-			cordMessage1 := fmt.Sprintf("> Assigned <@%s> %s to %s\n", cordUserid, screen_name, wishGroup)
+			cordMessage1 := fmt.Sprintf("> Assigned <@%s> %s to %s\n", cordUserid, screen_name, group_name)
 			_, err = dg.ChannelMessageSend(m.ChannelID, cordMessage1)
 			checkError(err)
 			didAssignGroupRole = false
 		}
 
 		// Assign Zerg/Terran/Protoss
+		race_name := ""
 		didAssignRaceRole := false // set to true if we assigned Zerg, Terran, or Protoss role.
 		wishRace := sheetUsrState[screen_name].race
 		switch wishRace {
 		case "Zerg":
+			race_name = "Zerg"
 			err := dg.GuildMemberRoleAdd(SERVER_ID, cordUserid, ZERG_ROLE_ID)
 			checkError(err)
 			err = dg.GuildMemberRoleRemove(SERVER_ID, cordUserid, TERRAN_ROLE_ID)
@@ -589,6 +608,7 @@ func update_roles(dg *discordgo.Session, m *discordgo.MessageCreate) {
 			didAssignRaceRole = true
 
 		case "Terran":
+			race_name = "Terran"
 			err := dg.GuildMemberRoleAdd(SERVER_ID, cordUserid, TERRAN_ROLE_ID)
 			checkError(err)
 			err = dg.GuildMemberRoleRemove(SERVER_ID, cordUserid, PROTOSS_ROLE_ID)
@@ -598,6 +618,7 @@ func update_roles(dg *discordgo.Session, m *discordgo.MessageCreate) {
 			didAssignRaceRole = true
 
 		case "Protoss":
+			race_name = "Protoss"
 			err := dg.GuildMemberRoleAdd(SERVER_ID, cordUserid, PROTOSS_ROLE_ID)
 			checkError(err)
 			err = dg.GuildMemberRoleRemove(SERVER_ID, cordUserid, TERRAN_ROLE_ID)
@@ -608,12 +629,64 @@ func update_roles(dg *discordgo.Session, m *discordgo.MessageCreate) {
 
 		}
 		if didAssignRaceRole {
-			cordMessage2 := fmt.Sprintf("> Assigned <@%s> %s to %s\n", cordUserid, screen_name, wishRace)
+			cordMessage2 := fmt.Sprintf("> Assigned <@%s> %s to %s\n", cordUserid, screen_name, race_name)
 			_, err = dg.ChannelMessageSend(m.ChannelID, cordMessage2)
 			checkError(err)
 			didAssignRaceRole = false
 		}
+
+		// Assign correct tier
+		tier_name := "Tier 0"
+		didAssignTier := false
+		wishTier := sheetUsrState[screen_name].tier
+		switch wishTier {
+		case TIER0:
+			tier_name = "Tier 0"
+			err := dg.GuildMemberRoleAdd(SERVER_ID, cordUserid, TIER0_ROLE_ID)
+			checkError(err)
+			err = dg.GuildMemberRoleRemove(SERVER_ID, cordUserid, TIER1_ROLE_ID)
+			checkError(err)
+			err = dg.GuildMemberRoleRemove(SERVER_ID, cordUserid, TIER3_ROLE_ID)
+			checkError(err)
+			didAssignTier = true
+		case TIER1:
+			tier_name = "Tier 1"
+			err := dg.GuildMemberRoleAdd(SERVER_ID, cordUserid, TIER1_ROLE_ID)
+			checkError(err)
+			err = dg.GuildMemberRoleRemove(SERVER_ID, cordUserid, TIER0_ROLE_ID)
+			checkError(err)
+			err = dg.GuildMemberRoleRemove(SERVER_ID, cordUserid, TIER3_ROLE_ID)
+			checkError(err)
+			didAssignTier = true
+		case TIER2:
+			tier_name = "Tier 2"
+			err := dg.GuildMemberRoleAdd(SERVER_ID, cordUserid, TIER2_ROLE_ID)
+			checkError(err)
+			err = dg.GuildMemberRoleRemove(SERVER_ID, cordUserid, TIER1_ROLE_ID)
+			checkError(err)
+			err = dg.GuildMemberRoleRemove(SERVER_ID, cordUserid, TIER3_ROLE_ID)
+			checkError(err)
+			didAssignTier = true
+		case TIER3:
+			tier_name = "Tier 3"
+			err := dg.GuildMemberRoleAdd(SERVER_ID, cordUserid, TIER3_ROLE_ID)
+			checkError(err)
+			err = dg.GuildMemberRoleRemove(SERVER_ID, cordUserid, TIER1_ROLE_ID)
+			checkError(err)
+			err = dg.GuildMemberRoleRemove(SERVER_ID, cordUserid, TIER2_ROLE_ID)
+			checkError(err)
+			didAssignTier = true
+			if didAssignTier {
+				cordMessage2 := fmt.Sprintf("> Assigned <@%s> %s to %s\n", cordUserid, screen_name, tier_name)
+				_, err = dg.ChannelMessageSend(m.ChannelID, cordMessage2)
+				checkError(err)
+				didAssignRaceRole = false
+			}
+
+		}
+
 	}
+
 	//##### End of testing
 }
 
@@ -658,10 +731,9 @@ func main() {
 	//Get desired state of roles from google sheets
 	sheetUsrState := make(map[string]player_t)
 	sheetUsrState = get_sheet_state(sheetUsrState)
-
-	dg.Close()
-	fmt.Printf("\nBot exited gracefully.\n")
-	os.Exit(0)
+	//dg.Close()
+	//fmt.Printf("\nBot exited gracefully.\n")
+	//os.Exit(0)
 	//##### End of Testing
 
 	/* Shutdown procedures
