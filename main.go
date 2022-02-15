@@ -39,6 +39,14 @@ const COACH_ROLE_ID string = "942083540739317811"
 const ASST_COACH_ROLE_ID string = "941808582410764288"
 const PLAYER_ROLE_ID string = "942083605667131443"
 
+// Constants for use on get_sheet_state logic
+const STAFF int = -1
+const COACHES int = -2
+const TIER0 int = 0
+const TIER1 int = 1
+const TIER2 int = 2
+const TIER3 int = 3
+
 // help cmd text
 const AVAILABLE_COMMANDS string = `
 [ /help        - show commands                        ]
@@ -52,6 +60,22 @@ const DIFF_MSG_START string = "```diff\n"
 const DIFF_MSG_END string = "\n```"
 const FIX_MSG_START string = "```fix\n"
 const FIX_MSG_END string = "\n```"
+
+// Used during parsing logic for "Teams" spreadsheet
+var NOT_PLAYER_NAME = map[string]bool{
+	/*"Staff":   true,
+	"Coaches": true,
+	"Tier 0":  true,
+	"Tier 2":  true,
+	"Tier 3":  true,
+	*/
+	"":   true,
+	" ":  true,
+	"\n": true,
+	"\t": true,
+}
+
+var GROUP int = 0
 
 //##### End of Hardcoded values
 
@@ -73,6 +97,7 @@ type team_t struct {
 	color              int
 	mentionable        bool
 	perms              int64
+	exists             bool
 	fully_created_role discordgo.Role
 }
 
@@ -260,6 +285,7 @@ func deleteroles(s *discordgo.Session, m *discordgo.MessageCreate) {
 
 // Builds a map of the desired user state (discord roles) from google sheets
 // see: https://developers.google.com/sheets/api/guides/concepts
+//func get_sheet_state(players map[string]player_t, disRoles_m map[string]*discordgo.Role) map[string]player_t {
 func get_sheet_state(players map[string]player_t) map[string]player_t {
 
 	// Read the secret file (google api key to access google sheets)
@@ -284,8 +310,11 @@ func get_sheet_state(players map[string]player_t) map[string]player_t {
 
 	// 1. Let's make a list of the teams
 	teams_a := resp.Values[0]
-	sheetsTeamList := make([]string, 0)
 
+	// [teamname].struct that holds various info such as the discord ID, the players
+	name_me := make(map[string]team_t)
+
+	sheetsTeamList := make([]string, 0)
 	// Extract the team names and put into the list
 	for _, b := range teams_a {
 		x := fmt.Sprint(b)
@@ -293,19 +322,76 @@ func get_sheet_state(players map[string]player_t) map[string]player_t {
 			continue
 		} else {
 			sheetsTeamList = append(sheetsTeamList, x)
+			name_me[x] = team_t{
+				exists: true,
+				name:   x,
+			}
 		}
 	}
 
 	// 2. Let's associate the users with their team
 
-	fmt.Println(sheetsTeamList)
+	fmt.Println(sheetsTeamList) // debug
 
-	for rowNumber, collum := range resp.Values {
-		fmt.Println(rowNumber)
-		for y, z := range collum {
-			fmt.Println(y, z)
+	isFirstRow := true
+	for _, collum := range resp.Values {
+		if isFirstRow { //skip the first row because it contains teamnames
+			isFirstRow = false
+			continue
+		}
+
+		//fmt.Println(rowNumber) //debug
+
+		var teamIndex int
+		for x, y := range collum {
+			z := fmt.Sprint(y)
+			if x == 0 {
+				teamIndex = 0
+			} else {
+				teamIndex = x / 2
+			}
+			switch z { //check which block we're on (coach or tier0 etc)
+			case "Staff":
+				GROUP = STAFF
+				continue
+			case "Coaches":
+				GROUP = COACHES
+				continue
+			case "Tier 0":
+				GROUP = TIER0
+				continue
+			case "Tier 1":
+				GROUP = TIER1
+				continue
+			case "Tier 2":
+				GROUP = TIER2
+				continue
+			case "Tier 3":
+				GROUP = TIER3
+				continue
+			}
+			if NOT_PLAYER_NAME[z] { // skip entry if not player
+				continue
+			}
+			//associate the user with the right team
+			switch GROUP {
+			case STAFF:
+				fmt.Println("STAFF:", teamIndex, x, z)
+			case COACHES:
+				fmt.Println("COACHES:", teamIndex, x, z)
+			case TIER0:
+				fmt.Println("TIER 0:", teamIndex, x, z)
+			case TIER1:
+				fmt.Println("TIER 1:", teamIndex, x, z)
+			case TIER2:
+				fmt.Println("TIER 2:", teamIndex, x, z)
+			case TIER3:
+				fmt.Println("TIER 3:", teamIndex, x, z)
+			}
 		}
 		//fmt.Println(rowNumber, collum)
+		fmt.Println("Next")
+		//teamIndex = 0 //reset, moving to the next row
 	}
 
 	fmt.Println("#####################\n\n")
@@ -405,8 +491,11 @@ func update_roles(dg *discordgo.Session, m *discordgo.MessageCreate) {
 		discord_id_exists[u.User.ID] = true
 	}
 
+	/* BIG FUNCTION CALL BIG
+	#### */
 	// 3. Get desired state of roles from google sheets
 	sheetUsrState := make(map[string]player_t)
+	//sheetUsrState = get_sheet_state(sheetUsrState, roles_m)
 	sheetUsrState = get_sheet_state(sheetUsrState)
 
 	// 4. Check if the user from sheet have desired roles assigned
