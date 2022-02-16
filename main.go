@@ -52,10 +52,12 @@ const TIER3 int = 3
 
 // help cmd text
 const AVAILABLE_COMMANDS string = `
-[ /help        - show commands                        ]
-[ /test        - test command                         ]
-[ /deleteroles - delete bot created roles             ]
-[ /updateroles - update roles from google spreadsheet ]
+[ /help          - show commands                        ]
+[ /test          - test command                         ]
+[                                                       ]
+[ /unassignroles - unassign bot assigned roles          ]
+[ /deleteroles   - delete bot created roles             ]
+[ /updateroles   - update roles from google spreadsheet ]
 `
 
 // Discord message formatting strings
