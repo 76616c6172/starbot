@@ -50,14 +50,14 @@ const TIER1 int = 1
 const TIER2 int = 2
 const TIER3 int = 3
 
-// help cmd text
+// help cmd text (DONT write longer lines than this, this is the maximum that still looks good on mobile)
 const AVAILABLE_COMMANDS string = `
-[ /help          - show commands                        ]
-[ /test          - test command                         ]
-[                                                       ]
-[ /unassignroles - unassign bot assigned roles          ]
-[ /deleteroles   - delete bot created roles             ]
-[ /updateroles   - update roles from google spreadsheet ]
+[ /help        - show commands                        ]
+[ /test        - test command                         ]
+[                                                     ]
+[ /updateroles - create and assign roles              ]
+[ /undoroles   - unassign previous batch of roles     ]
+[ /deleteroles - delete previously created roles      ]
 `
 
 // Discord message formatting strings
@@ -87,24 +87,26 @@ var NOT_PLAYER_NAME = map[string]bool{
 /* DATA STRUCTURES
 ##### */
 
-type player_t struct {
-	discord_Name string
-	discord_ID   string
-	tier         int //can be 0, 1, 2, or 3
-	usergroup    int
+type user_t struct {
+	ign          string //ingame name
+	discord_name string
+	discord_id   string
 	race         string
+	tier         int //0, 1, 2, or 3
+	group        int //Coach, Assistant Coach, or Player
 	team         string
 }
 
 // Struct to store information about a team-role
 type team_t struct {
-	name               string
-	members            []string
-	color              int
-	mentionable        bool
-	perms              int64
-	exists             bool
-	fully_created_role discordgo.Role
+	name       string
+	discord_id string
+	members    []user_t
+	color      int
+	exists     bool
+	//mentionable        bool
+	//perms              int64
+	//fully_created_role discordgo.Role
 }
 
 // Struct to keep track of how /assignroles is being used (we want to disallow multiple simultanious use)
@@ -222,6 +224,10 @@ func scan_message(s *discordgo.Session, m *discordgo.MessageCreate) {
 
 // Test function executes with side effects and returns final message to be send
 func test(s *discordgo.Session, m *discordgo.MessageCreate) string {
+	return "Just testing\n"
+}
+
+/* //testfunc old
 	//x := m.Author.Username //the username without nums
 	y := m.Author.String()
 
@@ -279,6 +285,7 @@ func test(s *discordgo.Session, m *discordgo.MessageCreate) string {
 	message := "Test function executed successfully"
 	return message
 }
+*/
 
 // WIP: Delete roles that were assigned?
 func deleteroles(s *discordgo.Session, m *discordgo.MessageCreate) {
@@ -291,31 +298,36 @@ func deleteroles(s *discordgo.Session, m *discordgo.MessageCreate) {
 
 // Builds a map of the desired user state (discord roles) from google sheets
 // see: https://developers.google.com/sheets/api/guides/concepts
-//func get_sheet_state(players map[string]player_t, disRoles_m map[string]*discordgo.Role) map[string]player_t {
+//func get_sheet_state(players map[string]user_t, disRoles_m map[string]*discordgo.Role) map[string]user_t {
 
 /* WIP: Assign roles based on desired
 ##### */
 func update_roles(dg *discordgo.Session, m *discordgo.MessageCreate) {
 	// 0. Get all the roles from the discord and make a map
 	// roles_m["role_name"].*discordgo.Role
-	allDiscordRoles, err := dg.GuildRoles(SERVER_ID)
+	discordRoles, err := dg.GuildRoles(SERVER_ID)
 	checkError(err)
 	roles_m := make(map[string]*discordgo.Role)
-	for _, b := range allDiscordRoles {
+	for _, b := range discordRoles {
 		roles_m[b.Name] = b
 	}
 
 	// 1. Get all the users in the discord
-	allDiscordUsers_s, err := dg.GuildMembers(SERVER_ID, "", 1000)
+	discordUsers, err := dg.GuildMembers(SERVER_ID, "", 1000)
 	checkError(err)
 
 	// 2. Create map of username#discriminator to discord_id
 	// and also a map of discord_id -> bool to check if they exist
 	discord_name_to_id_m := make(map[string]string)
 	discord_id_exists := make(map[string]bool)
-	for _, u := range allDiscordUsers_s {
+	for _, u := range discordUsers {
 		discord_name_to_id_m[u.User.String()] = u.User.ID
 		discord_id_exists[u.User.ID] = true
+	}
+	// used to check if a role by name already exists: if discord_role_exists[rolename] {...}
+	discord_role_exists := make(map[string]bool)
+	for _, b := range discordRoles {
+		discord_role_exists[b.Name] = true
 	}
 
 	/* Get sheet state
@@ -339,7 +351,7 @@ func update_roles(dg *discordgo.Session, m *discordgo.MessageCreate) {
 
 	// Read discord name cells from spreadsheet
 	target_discord_names := "Player List" + "!B1:B"
-	discord_NameResp, err := srv.Spreadsheets.Values.Get(SPREADSHEET_ID, target_discord_names).Do()
+	discord_nameResp, err := srv.Spreadsheets.Values.Get(SPREADSHEET_ID, target_discord_names).Do()
 	checkError(err)
 
 	// Read race cells from spreadsheet
@@ -347,18 +359,18 @@ func update_roles(dg *discordgo.Session, m *discordgo.MessageCreate) {
 	ingameRaceResp, err := srv.Spreadsheets.Values.Get(SPREADSHEET_ID, target_ingame_race).Do()
 	checkError(err)
 
-	// Read usergroup cells from spreadsheet
-	target_usergroup := "Player List" + "!C1:C"
-	usergroupResp, err := srv.Spreadsheets.Values.Get(SPREADSHEET_ID, target_usergroup).Do()
+	// Read group cells from spreadsheet
+	target_group := "Player List" + "!C1:C"
+	groupResp, err := srv.Spreadsheets.Values.Get(SPREADSHEET_ID, target_group).Do()
 	checkError(err)
 
 	//Read player tier from.. teams sheet
-	//target_usergroup := "Player List" + "!C1:C"
-	//usergroupResp, err := srv.Spreadsheets.Values.Get(SPREADSHEET_ID, target_usergroup).Do()
+	//target_group := "Player List" + "!C1:C"
+	//groupResp, err := srv.Spreadsheets.Values.Get(SPREADSHEET_ID, target_group).Do()
 	//checkError(err)
 
-	// sheetPlayers[ign]player_t
-	sheetPlayers := make(map[string]player_t)
+	// sheetPlayers[ign]user_t
+	sheetPlayers := make(map[string]user_t)
 
 	//Extract the screen names of the players
 	//for _, row := range resp.Values {
@@ -371,7 +383,7 @@ func update_roles(dg *discordgo.Session, m *discordgo.MessageCreate) {
 		a = strings.TrimSuffix(a, "]")
 
 		//Extract the discord name
-		b := fmt.Sprint(discord_NameResp.Values[i])
+		b := fmt.Sprint(discord_nameResp.Values[i])
 		b = strings.TrimPrefix(b, "[")
 		b = strings.TrimSuffix(b, "]")
 
@@ -380,8 +392,8 @@ func update_roles(dg *discordgo.Session, m *discordgo.MessageCreate) {
 		c = strings.TrimPrefix(c, "[")
 		c = strings.TrimSuffix(c, "]")
 
-		//Extract usergroup (coach/player/etc)
-		d := fmt.Sprint(usergroupResp.Values[i])
+		//Extract group (coach/player/etc)
+		d := fmt.Sprint(groupResp.Values[i])
 		d = strings.TrimPrefix(d, "[")
 		d = strings.TrimSuffix(d, "]")
 
@@ -397,10 +409,10 @@ func update_roles(dg *discordgo.Session, m *discordgo.MessageCreate) {
 		}
 
 		//add player data to the map
-		sheetPlayers[a] = player_t{
-			discord_Name: b,
+		sheetPlayers[a] = user_t{
+			discord_name: b,
 			race:         c,
-			usergroup:    ug,
+			group:        ug,
 		}
 	}
 
@@ -418,7 +430,7 @@ func update_roles(dg *discordgo.Session, m *discordgo.MessageCreate) {
 	teams_a := resp.Values[0]
 
 	// [teamname].struct that holds various info such as the discord ID, the players
-	teamsFromSheet := make(map[string]team_t)
+	sheetTeams := make(map[string]team_t)
 
 	sheetsTeamList := make([]string, 0)
 	// Extract the team names and put into the list
@@ -428,7 +440,7 @@ func update_roles(dg *discordgo.Session, m *discordgo.MessageCreate) {
 			continue
 		} else {
 			sheetsTeamList = append(sheetsTeamList, x)
-			teamsFromSheet[x] = team_t{
+			sheetTeams[x] = team_t{
 				exists: true,
 				name:   x,
 			}
@@ -481,11 +493,11 @@ func update_roles(dg *discordgo.Session, m *discordgo.MessageCreate) {
 				switch GROUP {
 				case STAFF:
 					entry.team = sheetsTeamList[teamIndex]
-					entry.usergroup = STAFF
+					entry.group = STAFF
 					sheetPlayers[screenName] = entry
 				case COACHES:
 					entry.team = sheetsTeamList[teamIndex]
-					entry.usergroup = COACHES
+					entry.group = COACHES
 					sheetPlayers[screenName] = entry
 				case TIER0:
 					entry.team = sheetsTeamList[teamIndex]
@@ -515,9 +527,8 @@ func update_roles(dg *discordgo.Session, m *discordgo.MessageCreate) {
 
 	for screen_name, _ := range sheetPlayers {
 
-		//debug 1337
-		//FIXME: This is unreadable AF, don't write code like this -v
-		cordName := sheetPlayers[screen_name].discord_Name
+		//get the discordname and the discorduser id for the player we're on in the loop
+		cordName := sheetPlayers[screen_name].discord_name
 		cordUserid := discord_name_to_id_m[cordName]
 
 		// Check if the user even exists on the server
@@ -529,7 +540,7 @@ func update_roles(dg *discordgo.Session, m *discordgo.MessageCreate) {
 		// Assign Coach/Assistant Coach/ Player
 		group_name := ""
 		didAssignGroupRole := false // set to true if we assigned Coach, Assistant Coach, or Player role.
-		wishGroup := sheetPlayers[screen_name].usergroup
+		wishGroup := sheetPlayers[screen_name].group
 		switch wishGroup {
 		case PLAYER:
 			group_name = "Player"
@@ -659,6 +670,27 @@ func update_roles(dg *discordgo.Session, m *discordgo.MessageCreate) {
 			didAssignRaceRole = false
 		}
 	}
+	// Potentially needed data structures?
+	/*
+	   map[string]user_t //map[ign]user_t
+
+	   map[string]string //[role_name]role_id
+	   map[string]string //[ign]discord_id
+	   map[string]string //[ign]discord_name
+
+	   var users []user_t //list of ingame names of tracked users (also called "screen name")
+	   var teams []team_t //list of tracked teams by team name
+	*/
+	// Create Teams that don't exist yet
+	for _, n := range sheetsTeamList {
+		if discord_role_exists[n] {
+			continue
+		} else {
+			//create new role with name n
+			//save the ID of the new role in a struct
+		}
+	}
+
 }
 
 func main() {
@@ -699,9 +731,19 @@ func main() {
 	/* TESTING WIP:
 	##### */
 
-	//Get desired state of roles from google sheets
+	// Potentially needed data structures?
+	/*
+	   map[string]user_t //map[ign]user_t
+
+	   map[string]string //[role_name]role_id
+	   map[string]string //[ign]discord_id
+	   map[string]string //[ign]discord_name
+
+	   var users []user_t //list of ingame names of tracked users (also called "screen name")
+	   var teams []team_t //list of tracked teams by team name
+	*/
+
 	//dg.Close()
-	//fmt.Printf("\nBot exited gracefully.\n")
 	//os.Exit(0)
 	//##### End of Testing
 
