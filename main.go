@@ -290,7 +290,35 @@ func deleteroles(s *discordgo.Session, m *discordgo.MessageCreate) {
 // Builds a map of the desired user state (discord roles) from google sheets
 // see: https://developers.google.com/sheets/api/guides/concepts
 //func get_sheet_state(players map[string]player_t, disRoles_m map[string]*discordgo.Role) map[string]player_t {
-func get_sheet_state(players map[string]player_t) map[string]player_t {
+
+/* WIP: Assign roles based on desired
+##### */
+func update_roles(dg *discordgo.Session, m *discordgo.MessageCreate) {
+	// 0. Get all the roles from the discord and make a map
+	// roles_m["role_name"].*discordgo.Role
+	allDiscordRoles, err := dg.GuildRoles(SERVER_ID)
+	checkError(err)
+	roles_m := make(map[string]*discordgo.Role)
+	for _, b := range allDiscordRoles {
+		roles_m[b.Name] = b
+	}
+
+	// 1. Get all the users in the discord
+	allDiscordUsers_s, err := dg.GuildMembers(SERVER_ID, "", 1000)
+	checkError(err)
+
+	// 2. Create map of username#discriminator to discord_id
+	// and also a map of discord_id -> bool to check if they exist
+	discord_name_to_id_m := make(map[string]string)
+	discord_id_exists := make(map[string]bool)
+	for _, u := range allDiscordUsers_s {
+		discord_name_to_id_m[u.User.String()] = u.User.ID
+		discord_id_exists[u.User.ID] = true
+	}
+
+	/* Get sheet state
+	#### */
+	// 3. Get desired state of roles from google sheets
 
 	// Read the secret file (google api key to access google sheets)
 	data, err := ioutil.ReadFile("secret.json")
@@ -301,9 +329,6 @@ func get_sheet_state(players map[string]player_t) map[string]player_t {
 	client := conf.Client(context.TODO())
 	srv, err := sheets.New(client)
 	checkError(err)
-
-	// #########
-	//######### end of testing
 
 	// Read sheet name cells from spreadsheet
 	target_screen_names := "Player List" + "!A1:A"
@@ -325,10 +350,13 @@ func get_sheet_state(players map[string]player_t) map[string]player_t {
 	usergroupResp, err := srv.Spreadsheets.Values.Get(SPREADSHEET_ID, target_usergroup).Do()
 	checkError(err)
 
-	// Read player tier from.. teams sheet
+	//Read player tier from.. teams sheet
 	//target_usergroup := "Player List" + "!C1:C"
 	//usergroupResp, err := srv.Spreadsheets.Values.Get(SPREADSHEET_ID, target_usergroup).Do()
 	//checkError(err)
+
+	// sheetPlayers[ign]player_t
+	sheetPlayers := make(map[string]player_t)
 
 	//Extract the screen names of the players
 	//for _, row := range resp.Values {
@@ -367,7 +395,7 @@ func get_sheet_state(players map[string]player_t) map[string]player_t {
 		}
 
 		//add player data to the map
-		players[a] = player_t{
+		sheetPlayers[a] = player_t{
 			discord_Name: b,
 			race:         c,
 			usergroup:    ug,
@@ -406,8 +434,6 @@ func get_sheet_state(players map[string]player_t) map[string]player_t {
 	}
 
 	// 2. Let's associate the users with their team
-
-	//fmt.Println(sheetsTeamList) // debug
 
 	isFirstRow := true
 	var GROUP int = -99
@@ -448,113 +474,60 @@ func get_sheet_state(players map[string]player_t) map[string]player_t {
 			if NOT_PLAYER_NAME[screenName] { // skip entry if not player
 				continue
 			}
-			//associate the user with the right team
-			switch GROUP {
-			case STAFF:
-				//fmt.Println("STAFF:", teamIndex, x, screenName) //debug
-				players[screenName] = player_t{
-					team:      sheetsTeamList[teamIndex],
-					usergroup: STAFF,
-				}
-			case COACHES:
-				//				fmt.Println("COACHES:", teamIndex, x, screenName) //debug
-				players[screenName] = player_t{
-					team:      sheetsTeamList[teamIndex],
-					usergroup: COACHES,
-				}
-			case TIER0:
-				//			fmt.Println("TIER 0:", teamIndex, x, screenName) //debug
-				players[screenName] = player_t{
-					tier: 0,
-					team: sheetsTeamList[teamIndex],
-				}
-			case TIER1:
-				//		fmt.Println("TIER 1:", teamIndex, x, screenName) //debug
-				players[screenName] = player_t{
-					tier: 1,
-					team: sheetsTeamList[teamIndex],
-				}
-			case TIER2:
-				//	fmt.Println("TIER 2:", teamIndex, x, screenName) //debug
-				players[screenName] = player_t{
-					tier: 2,
-					team: sheetsTeamList[teamIndex],
-				}
-			case TIER3:
-				fmt.Println("TIER 3:", teamIndex, x, screenName) //debug
-				fmt.Println("\n\n\n")
-				fmt.Println("ALERT ALERT")
-				fmt.Println("#######################")
-				fmt.Println("\n\n\n")
-				players[screenName] = player_t{
-					tier: 3,
-					team: sheetsTeamList[teamIndex],
+
+			if entry, ok := sheetPlayers[screenName]; ok {
+				switch GROUP {
+				case STAFF:
+					entry.team = sheetsTeamList[teamIndex]
+					entry.usergroup = STAFF
+					sheetPlayers[screenName] = entry
+				case COACHES:
+					entry.team = sheetsTeamList[teamIndex]
+					entry.usergroup = COACHES
+					sheetPlayers[screenName] = entry
+				case TIER0:
+					entry.team = sheetsTeamList[teamIndex]
+					entry.tier = TIER0
+					sheetPlayers[screenName] = entry
+				case TIER1:
+					entry.team = sheetsTeamList[teamIndex]
+					entry.tier = TIER1
+					sheetPlayers[screenName] = entry
+				case TIER2:
+					entry.team = sheetsTeamList[teamIndex]
+					entry.tier = TIER2
+					sheetPlayers[screenName] = entry
+				case TIER3:
+					entry.team = sheetsTeamList[teamIndex]
+					entry.tier = TIER3
+					sheetPlayers[screenName] = entry
 				}
 			}
 		}
+
 	}
-
 	checkError(err)
-
-	return players
-}
-
-/* WIP: Assign roles based on desired
-##### */
-func update_roles(dg *discordgo.Session, m *discordgo.MessageCreate) {
-	// 0. Get all the roles from the discord and make a map
-	// roles_m["role_name"].*discordgo.Role
-	allDiscordRoles, err := dg.GuildRoles(SERVER_ID)
-	checkError(err)
-	roles_m := make(map[string]*discordgo.Role)
-	for _, b := range allDiscordRoles {
-		roles_m[b.Name] = b
-	}
-
-	// 1. Get all the users in the discord
-	allDiscordUsers_s, err := dg.GuildMembers(SERVER_ID, "", 1000)
-	checkError(err)
-
-	// 2. Create map of username#discriminator to discord_id
-	// and also a map of discord_id -> bool to check if they exist
-	discord_name_to_id_m := make(map[string]string)
-	discord_id_exists := make(map[string]bool)
-	for _, u := range allDiscordUsers_s {
-		discord_name_to_id_m[u.User.String()] = u.User.ID
-		discord_id_exists[u.User.ID] = true
-	}
-
-	/* BIG FUNCTION CALL BIG
-	#### */
-	// 3. Get desired state of roles from google sheets
-	sheetUsrState := make(map[string]player_t)
-	//sheetUsrState = get_sheet_state(sheetUsrState, roles_m)
-	sheetUsrState = get_sheet_state(sheetUsrState)
 
 	// 4. Check if the user from sheet have desired roles assigned
 	// and if not -> assign it!
-	/* DEBUG CHECK
-	 */
-	fmt.Println("discord id:", sheetUsrState["SF)valar"].discord_ID)
-	fmt.Println("discord name:", sheetUsrState["SF)valar"].discord_Name)
-	fmt.Println("race:", sheetUsrState["SF)valar"].race)
-	fmt.Println("tier:", sheetUsrState["SF)valar"].tier)
-	fmt.Println("team:", sheetUsrState["SF)valar"].team)
-	fmt.Println("usergoup: ", sheetUsrState["SF)valar"].usergroup)
-	for screen_name, _ := range sheetUsrState {
-		a := sheetUsrState[screen_name].discord_Name
-		cordUserid := discord_name_to_id_m[a]
+
+	for screen_name, _ := range sheetPlayers {
+
+		//debug 1337
+		//FIXME: This is unreadable AF, don't write code like this -v
+		cordName := sheetPlayers[screen_name].discord_Name
+		cordUserid := discord_name_to_id_m[cordName]
 
 		// Check if the user even exists on the server
 		if !discord_id_exists[cordUserid] {
-			fmt.Println("Error: couldn't find the user", screen_name, "on discord")
+			//fmt.Println("Error: couldn't find the user", screen_name, "on discord") //debug
 			continue // skip if the user doesn't exist
 		}
 
 		// Assign Coach/Assistant Coach/ Player
 		group_name := ""
 		didAssignGroupRole := false // set to true if we assigned Coach, Assistant Coach, or Player role.
-		wishGroup := sheetUsrState[screen_name].usergroup
+		wishGroup := sheetPlayers[screen_name].usergroup
 		switch wishGroup {
 		case PLAYER:
 			group_name = "Player"
@@ -595,7 +568,7 @@ func update_roles(dg *discordgo.Session, m *discordgo.MessageCreate) {
 		// Assign Zerg/Terran/Protoss
 		race_name := ""
 		didAssignRaceRole := false // set to true if we assigned Zerg, Terran, or Protoss role.
-		wishRace := sheetUsrState[screen_name].race
+		wishRace := sheetPlayers[screen_name].race
 		switch wishRace {
 		case "Zerg":
 			race_name = "Zerg"
@@ -638,7 +611,7 @@ func update_roles(dg *discordgo.Session, m *discordgo.MessageCreate) {
 		// Assign correct tier
 		tier_name := "Tier 0"
 		didAssignTier := false
-		wishTier := sheetUsrState[screen_name].tier
+		wishTier := sheetPlayers[screen_name].tier
 		switch wishTier {
 		case TIER0:
 			tier_name = "Tier 0"
@@ -676,18 +649,14 @@ func update_roles(dg *discordgo.Session, m *discordgo.MessageCreate) {
 			err = dg.GuildMemberRoleRemove(SERVER_ID, cordUserid, TIER2_ROLE_ID)
 			checkError(err)
 			didAssignTier = true
-			if didAssignTier {
-				cordMessage2 := fmt.Sprintf("> Assigned <@%s> %s to %s\n", cordUserid, screen_name, tier_name)
-				_, err = dg.ChannelMessageSend(m.ChannelID, cordMessage2)
-				checkError(err)
-				didAssignRaceRole = false
-			}
-
 		}
-
+		if didAssignTier {
+			cordMessage2 := fmt.Sprintf("> Assigned <@%s> %s to %s\n", cordUserid, screen_name, tier_name)
+			_, err = dg.ChannelMessageSend(m.ChannelID, cordMessage2)
+			checkError(err)
+			didAssignRaceRole = false
+		}
 	}
-
-	//##### End of testing
 }
 
 func main() {
@@ -729,8 +698,6 @@ func main() {
 	##### */
 
 	//Get desired state of roles from google sheets
-	sheetUsrState := make(map[string]player_t)
-	sheetUsrState = get_sheet_state(sheetUsrState)
 	//dg.Close()
 	//fmt.Printf("\nBot exited gracefully.\n")
 	//os.Exit(0)
