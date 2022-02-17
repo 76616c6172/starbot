@@ -149,7 +149,20 @@ func scan_message(s *discordgo.Session, m *discordgo.MessageCreate) {
 	// Respond to specific messages
 	switch m.Content {
 	case "/deleteroles":
-		deleteroles(s, m)
+		if AUTHORIZED_USERS[m.Author.ID] && !rolesCmd_s.isInUse { // if the user is authorized, proceed with the operation
+			rolesCmd_s.isInUse = true
+			rolesCmd_s.session = s
+			rolesCmd_s.AuthorID = m.Author.ID
+			rolesCmd_s.ChannelID = m.ChannelID
+			deleteroles(s, m)          // run role deletion
+			rolesCmd_s.isInUse = false //reset the data so /updateroles can be used again
+		} else {
+			_, err := s.ChannelMessageSend(m.ChannelID, DIFF_MSG_START+"- /deleteroles ERROR: "+m.Author.Username+" IS NOT AUTHORIZED"+DIFF_MSG_END)
+			if err != nil {
+				fmt.Println(err)
+			}
+			return
+		}
 
 	case "/get_server_id": // Prints the ID of the discord server
 		_, err := s.ChannelMessageSend(m.ChannelID, m.GuildID)
@@ -165,7 +178,7 @@ func scan_message(s *discordgo.Session, m *discordgo.MessageCreate) {
 			return
 		}
 		if AUTHORIZED_USERS[m.Author.ID] { // if the user is authorized, proceed with the operation
-			_, err := s.ChannelMessageSend(m.ChannelID, FIX_MSG_START+"+ /updateroles EXECUTION HAS STARTED"+FIX_MSG_END)
+			_, err := s.ChannelMessageSend(m.ChannelID, FIX_MSG_START+"+ /updateroles ROLE UPDATE STARTED"+FIX_MSG_END)
 			if err != nil {
 				fmt.Println(err)
 				return
@@ -176,7 +189,7 @@ func scan_message(s *discordgo.Session, m *discordgo.MessageCreate) {
 			rolesCmd_s.ChannelID = m.ChannelID
 			update_roles(s, m)         //testing new command
 			rolesCmd_s.isInUse = false //reset the data so /updateroles can be used again
-			_, err = s.ChannelMessageSend(m.ChannelID, DIFF_MSG_START+"+ /updateroles EXECUTION HAS FINISHED"+DIFF_MSG_END)
+			_, err = s.ChannelMessageSend(m.ChannelID, DIFF_MSG_START+"+ /updateroles ROLE UPDATE COMPLETE"+DIFF_MSG_END)
 			if err != nil {
 				fmt.Println(err)
 				return
@@ -302,7 +315,7 @@ func deleteroles(s *discordgo.Session, m *discordgo.MessageCreate) {
 		checkError(err)
 	}
 
-	_, err = s.ChannelMessageSend(m.ChannelID, FIX_MSG_START+"+ /deleteroles DELETION OF ROLES IS COMPLETE"+FIX_MSG_END)
+	_, err = s.ChannelMessageSend(m.ChannelID, DIFF_MSG_END+"+ /deleteroles ROLE DELETION COMPLETE"+DIFF_MSG_END)
 	checkError(err)
 }
 
@@ -715,30 +728,64 @@ func update_roles(dg *discordgo.Session, m *discordgo.MessageCreate) {
 		}
 	}
 
+	// To do: copy user info into the sheetTeams map
+	// have:
+	// want: user_t
+
 	// use sheetplayers instead?
-	for _, b := range sheetTeams {
-		fmt.Println(b) //debug
-		for _, y := range b.members {
-			name := y.discord_name
+
+	// the problem is
+	// at this point in the code, we don't have sheetTeams[teamname]team_t.members (user_t) populated
+
+	//okay so build a map and shit
+	for _, usr := range sheetPlayers {
+		team := usr.team
+		if len(team) == 0 {
+			continue //skip ahead if no team was found
+		}
+		//name := usr.discord_name
+		//id := usr.discord_id
+		//fmt.Println(screen_name, name, id, "in", team)
+		// write the data to the sheetTeams map so we can use it in the next code block
+		entry := sheetTeams[team]
+
+		//make sure in the updated entry we have the userid, we need it in thext next loop
+		usr.discord_id = discord_name_to_id_m[usr.discord_name]
+		entry.members = append(entry.members, usr)
+
+		sheetTeams[team] = entry //write the entry
+	}
+
+	//now this should work!
+	// iterate over all teams and assign the teamrole to the members
+	for _, t := range sheetTeams { //for each team in the spreadsheet
+		for _, y := range t.members { //for each user in the current team
+			//name := y.discord_name
 			id := y.discord_id
 			team := y.team
 			team_id := roles_m[team]
 
-			fmt.Println(name, id, team, team_id)
-
-			// add the role to current member
+			//check if the member is on the server
 			err = nil
-			err := dg.GuildMemberRoleAdd(m.GuildID, id, team_id.ID)
+			// 13377
+			cordUser, err := dg.GuildMember(m.GuildID, id)
+			if err != nil { //if we can't find the user, skip ahead
+				continue
+			}
+			fmt.Println("CHECK 1", cordUser.User.Username, id, team, team_id) //debug
+			err = nil
+			err = dg.GuildMemberRoleAdd(m.GuildID, id, team_id.ID)
 			checkError(err)
-			if err == nil { //if we did actually assign the role, save that we did that so we can unsassign it with unassignroles
+			if err == nil { //if we did actually assign the role, save that we did that so we can unassign it later
+				// add the role to current member
 				var assignment [2]string
 				assignment[0] = id
 				assignment[1] = team_id.ID
 				newly_assigned_roles = append(newly_assigned_roles, assignment)
+				// send discord message about the role assignment
+				cordMessage := fmt.Sprintf("> Assigned %s to %s\n", cordUser.Mention(), roles_m[team].Mention())
+				_, err = dg.ChannelMessageSend(m.ChannelID, cordMessage)
 			}
-			// send discord message about the role assignment
-			cordMessage := fmt.Sprintf("> Assigned <@%s> to <%s>\n", discord_name_to_id_m[name], roles_m[team].Mention())
-			_, err = dg.ChannelMessageSend(m.ChannelID, cordMessage)
 		}
 
 	}
@@ -767,8 +814,8 @@ func main() {
 	dg.AddHandler(scan_message)
 
 	// Determines which types of events we will receive from discord
-	dg.Identify.Intents = discordgo.IntentsGuildMessages // Exclusively care about receiving message events
-	//dg.Identify.Intents = discordgo.IntentsAll
+	//dg.Identify.Intents = discordgo.IntentsGuildMessages // Exclusively care about receiving message events
+	dg.Identify.Intents = discordgo.IntentsAll
 	//dg.Identify.Intents = discordgo.IntentsGuilds
 
 	// Establish the discord session through discord bot api
