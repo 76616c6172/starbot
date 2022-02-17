@@ -50,6 +50,9 @@ const TIER1 int = 1
 const TIER2 int = 2
 const TIER3 int = 3
 
+// Colors for role creation (decimal values of hex color codes)
+const NEON_GREEN int = 2358021
+
 // help cmd text (DONT write longer lines than this, this is the maximum that still looks good on mobile)
 const AVAILABLE_COMMANDS string = `
 [ /help        - show commands                        ]
@@ -122,8 +125,9 @@ type rolesCmd_t struct {
 /* #####
 Global vars
 ##### */
-var newly_created_roles []string // Holds newly created discord role IDs
-var rolesCmd_s rolesCmd_t        // info about /update roles command while being used
+var newly_created_roles []string     // Holds newly created discord role IDs
+var newly_assigned_roles [][2]string //[roleid][userid]
+var rolesCmd_s rolesCmd_t            // info about /update roles command while being used
 //##### End of global vars
 
 // error check as a func because it's annoying to write "if err != nil { ... }" over and over
@@ -146,10 +150,7 @@ func scan_message(s *discordgo.Session, m *discordgo.MessageCreate) {
 	switch m.Content {
 	case "/deleteroles":
 		deleteroles(s, m)
-		_, err := s.ChannelMessageSend(m.ChannelID, "Deleted roles.")
-		if err != nil {
-			fmt.Println(err)
-		}
+
 	case "/get_server_id": // Prints the ID of the discord server
 		_, err := s.ChannelMessageSend(m.ChannelID, m.GuildID)
 		if err != nil {
@@ -288,12 +289,21 @@ func test(s *discordgo.Session, m *discordgo.MessageCreate) string {
 */
 
 // WIP: Delete roles that were assigned?
+// 1337
 func deleteroles(s *discordgo.Session, m *discordgo.MessageCreate) {
-	for _, v := range newly_created_roles {
-		//s.State.RoleRemove(m.Member.GuildID, v)
-		s.GuildRoleDelete(m.GuildID, v)
-		fmt.Println(v)
+	_, err := s.ChannelMessageSend(m.ChannelID, FIX_MSG_START+"+ /deleteroles DELETING ROLES"+FIX_MSG_END)
+
+	checkError(err)
+	for _, role_id := range newly_created_roles {
+		cordMessage := fmt.Sprintf("> Deleting <@%s>\n", role_id)
+		_, err = s.ChannelMessageSend(m.ChannelID, cordMessage)
+		checkError(err)
+		err = s.GuildRoleDelete(m.GuildID, role_id)
+		checkError(err)
 	}
+
+	_, err = s.ChannelMessageSend(m.ChannelID, FIX_MSG_START+"+ /deleteroles DELETION OF ROLES IS COMPLETE"+FIX_MSG_END)
+	checkError(err)
 }
 
 // Builds a map of the desired user state (discord roles) from google sheets
@@ -682,15 +692,56 @@ func update_roles(dg *discordgo.Session, m *discordgo.MessageCreate) {
 	   var teams []team_t //list of tracked teams by team name
 	*/
 	// Create Teams that don't exist yet
+	// 1337
 	for _, n := range sheetsTeamList {
 		if discord_role_exists[n] {
 			continue
 		} else {
-			//create new role with name n
-			//save the ID of the new role in a struct
+			// create the role
+			new_role, err := dg.GuildRoleCreate(m.GuildID)
+			checkError(err)
+			// save the role id so we can delete it later
+			new_role_discord_id := new_role.ID
+			newly_created_roles = append(newly_created_roles, new_role_discord_id)
+			// name the role correctly
+			new_role, err = dg.GuildRoleEdit(m.GuildID, new_role_discord_id, n, NEON_GREEN, false, 0, true)
+			checkError(err)
+
+			//update the map of roles
+			roles_m[n] = new_role
+
+			cordMessage3 := fmt.Sprintf("> Created <%s>\n", new_role.Mention())
+			_, err = dg.ChannelMessageSend(m.ChannelID, cordMessage3)
 		}
 	}
 
+	// use sheetplayers instead?
+	for _, b := range sheetTeams {
+		fmt.Println(b) //debug
+		for _, y := range b.members {
+			name := y.discord_name
+			id := y.discord_id
+			team := y.team
+			team_id := roles_m[team]
+
+			fmt.Println(name, id, team, team_id)
+
+			// add the role to current member
+			err = nil
+			err := dg.GuildMemberRoleAdd(m.GuildID, id, team_id.ID)
+			checkError(err)
+			if err == nil { //if we did actually assign the role, save that we did that so we can unsassign it with unassignroles
+				var assignment [2]string
+				assignment[0] = id
+				assignment[1] = team_id.ID
+				newly_assigned_roles = append(newly_assigned_roles, assignment)
+			}
+			// send discord message about the role assignment
+			cordMessage := fmt.Sprintf("> Assigned <@%s> to <%s>\n", discord_name_to_id_m[name], roles_m[team].Mention())
+			_, err = dg.ChannelMessageSend(m.ChannelID, cordMessage)
+		}
+
+	}
 }
 
 func main() {
