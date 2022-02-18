@@ -125,9 +125,12 @@ type rolesCmd_t struct {
 /* #####
 Global vars
 ##### */
-var newly_created_roles []string     // Holds newly created discord role IDs
-var newly_assigned_roles [][2]string //[roleid][userid]
-var rolesCmd_s rolesCmd_t            // info about /update roles command while being used
+var newly_created_roles []string             // Holds newly created discord role IDs
+var newly_assigned_roles [][2]string         //[roleid][userid]
+var rolesCmd_s rolesCmd_t                    // info about /update roles command while being used
+var discord_name_to_id = map[string]string{} // Used to lookup discordid from discord name
+var discord_id_exists = map[string]bool{}    // Used to check if the user exists on the server
+var discord_role_exists = map[string]bool{}  // Used to check if the user exists on the server
 //##### End of global vars
 
 // error check as a func because it's annoying to write "if err != nil { ... }" over and over
@@ -341,14 +344,13 @@ func update_roles(dg *discordgo.Session, m *discordgo.MessageCreate) {
 
 	// 2. Create map of username#discriminator to discord_id
 	// and also a map of discord_id -> bool to check if they exist
-	discord_name_to_id_m := make(map[string]string)
-	discord_id_exists := make(map[string]bool)
+	//discord_name_to_id := make(map[string]string)
+	//discord_id_exists := make(map[string]bool)
 	for _, u := range discordUsers {
-		discord_name_to_id_m[u.User.String()] = u.User.ID
+		discord_name_to_id[u.User.String()] = u.User.ID
 		discord_id_exists[u.User.ID] = true
 	}
 	// used to check if a role by name already exists: if discord_role_exists[rolename] {...}
-	discord_role_exists := make(map[string]bool)
 	for _, b := range discordRoles {
 		discord_role_exists[b.Name] = true
 	}
@@ -552,7 +554,7 @@ func update_roles(dg *discordgo.Session, m *discordgo.MessageCreate) {
 
 		//get the discordname and the discorduser id for the player we're on in the loop
 		cordName := sheetPlayers[screen_name].discord_name
-		cordUserid := discord_name_to_id_m[cordName]
+		cordUserid := discord_name_to_id[cordName]
 
 		// Check if the user even exists on the server
 		if !discord_id_exists[cordUserid] {
@@ -750,7 +752,7 @@ func update_roles(dg *discordgo.Session, m *discordgo.MessageCreate) {
 		entry := sheetTeams[team]
 
 		//make sure in the updated entry we have the userid, we need it in thext next loop
-		usr.discord_id = discord_name_to_id_m[usr.discord_name]
+		usr.discord_id = discord_name_to_id[usr.discord_name]
 		entry.members = append(entry.members, usr)
 
 		sheetTeams[team] = entry //write the entry
@@ -759,20 +761,18 @@ func update_roles(dg *discordgo.Session, m *discordgo.MessageCreate) {
 	//now this should work!
 	// iterate over all teams and assign the teamrole to the members
 	for _, t := range sheetTeams { //for each team in the spreadsheet
-		for _, y := range t.members { //for each user in the current team
-			//name := y.discord_name
-			id := y.discord_id
-			team := y.team
-			team_id := roles_m[team]
+		for _, usr := range t.members { //for each user in the current team
 
-			//check if the member is on the server
-			err = nil
-			// 13377
-			cordUser, err := dg.GuildMember(m.GuildID, id)
-			if err != nil { //if we can't find the user, skip ahead
+			if usr.exists() == false { // Skip to the next user if the user is not on the server
+				fmt.Println("ERROR:", usr.discord_name, "not found on the server.")
 				continue
 			}
-			fmt.Println("CHECK 1", cordUser.User.Username, id, team, team_id) //debug
+
+			id := usr.discord_id
+			team := usr.team
+			team_id := roles_m[team]
+
+			//fmt.Println("CHECK 1", cordUser.User.Username, id, team, team_id) //debug
 			err = nil
 			err = dg.GuildMemberRoleAdd(m.GuildID, id, team_id.ID)
 			checkError(err)
@@ -783,6 +783,8 @@ func update_roles(dg *discordgo.Session, m *discordgo.MessageCreate) {
 				assignment[1] = team_id.ID
 				newly_assigned_roles = append(newly_assigned_roles, assignment)
 				// send discord message about the role assignment
+				cordUser, err := dg.GuildMember(SERVER_ID, id)
+				checkError(err)
 				cordMessage := fmt.Sprintf("> Assigned %s to %s\n", cordUser.Mention(), roles_m[team].Mention())
 				_, err = dg.ChannelMessageSend(m.ChannelID, cordMessage)
 			}
@@ -791,8 +793,16 @@ func update_roles(dg *discordgo.Session, m *discordgo.MessageCreate) {
 	}
 }
 
-func main() {
+// Workaround needed for exists() method below FIXME: this is not the right approacj
+//type String string
 
+//// Returns true if the user is found on the discord server
+func (user user_t) exists() bool {
+	discordid := discord_name_to_id[user.discord_name]
+	return discord_id_exists[discordid]
+}
+
+func main() {
 	/* Startup procedures:
 	#####	*/
 
