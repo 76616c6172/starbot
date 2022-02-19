@@ -69,6 +69,9 @@ const DIFF_MSG_END string = "\n```"
 const FIX_MSG_START string = "```fix\n"
 const FIX_MSG_END string = "\n```"
 
+// debug this is temporary
+var NEW_BATCH string = "batch 1"
+
 // Used during parsing logic for "Teams" spreadsheet
 var NOT_PLAYER_NAME = map[string]bool{
 	/*"Staff":   true,
@@ -131,6 +134,7 @@ var dangerousCommands dangerousCommands_t // info about /update roles command wh
 var discordNameToID = map[string]string{} // Used to lookup discordid from discord name
 var discordIDExists = map[string]bool{}   // Used to check if the user exists on the server
 var discordRoleExsits = map[string]bool{} // Used to check if the user exists on the server
+var createdRoles = map[string][]team_t{}  //[batchName]{roleid, roleid, roleid, roleid}
 //##### End of global vars
 
 // error check as a func because it's annoying to write "if err != nil { ... }" over and over
@@ -241,7 +245,8 @@ func scan_message(s *discordgo.Session, m *discordgo.MessageCreate) {
 
 // Test function executes with side effects and returns final message to be send
 func test(s *discordgo.Session, m *discordgo.MessageCreate) string {
-	return "Just testing\n"
+	message := fmt.Sprint(createdRoles)
+	return message
 }
 
 /* //testfunc old
@@ -304,8 +309,7 @@ func test(s *discordgo.Session, m *discordgo.MessageCreate) string {
 }
 */
 
-// WIP: Delete roles that were assigned?
-// 1337
+// Delete all roles that were created by Starbot since the bot started running
 func deleteroles(s *discordgo.Session, m *discordgo.MessageCreate) {
 	_, err := s.ChannelMessageSend(m.ChannelID, FIX_MSG_START+"+ /deleteroles DELETING ROLES"+FIX_MSG_END)
 
@@ -326,8 +330,7 @@ func deleteroles(s *discordgo.Session, m *discordgo.MessageCreate) {
 // see: https://developers.google.com/sheets/api/guides/concepts
 //func get_sheet_state(players map[string]user_t, disRoles_m map[string]*discordgo.Role) map[string]user_t {
 
-/* WIP: Assign roles based on desired
-##### */
+// Check google sheet and assign roles automatically (create new team roles as needed)
 func update_roles(dg *discordgo.Session, m *discordgo.MessageCreate) {
 	// 0. Get all the roles from the discord and make a map
 	// roles_m["role_name"].*discordgo.Role
@@ -442,9 +445,8 @@ func update_roles(dg *discordgo.Session, m *discordgo.MessageCreate) {
 	}
 
 	/// ###########
-	// WIP - DESIRED FUNCTIONALITY:
-	// 1. Get teams sheet data without crashing on empty cells etc
 
+	// 1. Get teams sheet data without crashing on empty cells etc
 	targetTeams := "Teams" + "!A1:Z" // defines the sheet and range to be read
 	resp, err := srv.Spreadsheets.Values.Get(SPREADSHEET_ID, targetTeams).Do()
 	if err != nil {
@@ -707,11 +709,17 @@ func update_roles(dg *discordgo.Session, m *discordgo.MessageCreate) {
 	   var teams []team_t //list of tracked teams by team name
 	*/
 	// Create Teams that don't exist yet
-	// 1337
+	created_new_role := false
 	for _, n := range sheetsTeamList {
 		if discordRoleExsits[n] {
 			continue
 		} else {
+			if !created_new_role {
+				// 1. Creat a new batch for the teams we are about to create
+				var newTeams []team_t
+				createdRoles[NEW_BATCH] = newTeams
+				created_new_role = true
+			}
 			// create the role
 			new_role, err := dg.GuildRoleCreate(m.GuildID)
 			checkError(err)
@@ -724,6 +732,16 @@ func update_roles(dg *discordgo.Session, m *discordgo.MessageCreate) {
 
 			//update the map of roles
 			roles_m[n] = new_role
+
+			// WIP
+			//update the role creation history
+			var my_team team_t
+			my_team.discord_id = new_role_discord_id
+			my_team.name = n
+
+			new_batch_of_teams := createdRoles[NEW_BATCH]
+			new_batch_of_teams = append(new_batch_of_teams, my_team)
+			createdRoles[NEW_BATCH] = new_batch_of_teams //save the modified entry
 
 			cordMessage3 := fmt.Sprintf("> Created <%s>\n", new_role.Mention())
 			_, err = dg.ChannelMessageSend(m.ChannelID, cordMessage3)
