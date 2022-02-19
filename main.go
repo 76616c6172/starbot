@@ -814,10 +814,27 @@ func update_roles(dg *discordgo.Session, m *discordgo.MessageCreate) {
 // Workaround needed for exists() method below FIXME: this is not the right approacj
 //type String string
 
-//// Returns true if the user is found on the discord server
+// Helper that returns true if the user is found on the discord server
 func (user user_t) exists() bool {
 	discordid := discordNameToID[user.discord_name]
 	return discordIDExists[discordid]
+}
+
+/* Todo: I haven't decided what kind of maps I want to store that hold the information required
+for this lookup yet. What separation should there be between the globally availables states of:
+- discord server
+- google sheets
+- webapp
+And how do I want to store this on disc?
+*/
+// Helper that returns the team the user belongs to
+func (u user_t) get_team() team_t {
+	teamname := u.team
+	// Todo: Lookup the team somewhere
+	var team team_t
+	team.name = teamname
+
+	return team
 }
 
 func main() {
