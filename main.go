@@ -113,7 +113,7 @@ type team_t struct {
 }
 
 // Struct to keep track of how /assignroles is being used (we want to disallow multiple simultanious use)
-type rolesCmd_t struct {
+type dangerousCommands_t struct {
 	isInUse   bool               //is set to true if command is in use
 	AuthorID  string             //author who last initiated /assignroles
 	ChannelID string             //channel where /assignroles was initiated from
@@ -125,19 +125,19 @@ type rolesCmd_t struct {
 /* #####
 Global vars
 ##### */
-var newly_created_roles []string             // Holds newly created discord role IDs
-var newly_assigned_roles [][2]string         //[roleid][userid]
-var rolesCmd_s rolesCmd_t                    // info about /update roles command while being used
-var discord_name_to_id = map[string]string{} // Used to lookup discordid from discord name
-var discord_id_exists = map[string]bool{}    // Used to check if the user exists on the server
-var discord_role_exists = map[string]bool{}  // Used to check if the user exists on the server
+var newlyCreatedRoles []string            // Holds newly created discord role IDs
+var newlyAssignedRoles [][2]string        //[roleid][userid]
+var dangerousCommands dangerousCommands_t // info about /update roles command while being used
+var discordNameToID = map[string]string{} // Used to lookup discordid from discord name
+var discordIDExists = map[string]bool{}   // Used to check if the user exists on the server
+var discordRoleExsits = map[string]bool{} // Used to check if the user exists on the server
 //##### End of global vars
 
 // error check as a func because it's annoying to write "if err != nil { ... }" over and over
 func checkError(err error) {
 	if err != nil {
 		fmt.Println(err)
-		//panic(err.Error())
+		//panic(err.Error()rolesCmd_rolesCmd_ss)
 	}
 }
 
@@ -152,13 +152,13 @@ func scan_message(s *discordgo.Session, m *discordgo.MessageCreate) {
 	// Respond to specific messages
 	switch m.Content {
 	case "/deleteroles":
-		if AUTHORIZED_USERS[m.Author.ID] && !rolesCmd_s.isInUse { // if the user is authorized, proceed with the operation
-			rolesCmd_s.isInUse = true
-			rolesCmd_s.session = s
-			rolesCmd_s.AuthorID = m.Author.ID
-			rolesCmd_s.ChannelID = m.ChannelID
-			deleteroles(s, m)          // run role deletion
-			rolesCmd_s.isInUse = false //reset the data so /updateroles can be used again
+		if AUTHORIZED_USERS[m.Author.ID] && !dangerousCommands.isInUse { // if the user is authorized, proceed with the operation
+			dangerousCommands.isInUse = true
+			dangerousCommands.session = s
+			dangerousCommands.AuthorID = m.Author.ID
+			dangerousCommands.ChannelID = m.ChannelID
+			deleteroles(s, m)                 // run role deletion
+			dangerousCommands.isInUse = false //reset the data so /updateroles can be used again
 		} else {
 			_, err := s.ChannelMessageSend(m.ChannelID, DIFF_MSG_START+"- /deleteroles ERROR: "+m.Author.Username+" IS NOT AUTHORIZED"+DIFF_MSG_END)
 			if err != nil {
@@ -173,7 +173,7 @@ func scan_message(s *discordgo.Session, m *discordgo.MessageCreate) {
 			fmt.Println(err)
 		}
 	case "/updateroles":
-		if rolesCmd_s.isInUse { //check if this command is in use first and disallow simultanious use
+		if dangerousCommands.isInUse { //check if this command is in use first and disallow simultanious use
 			_, err := s.ChannelMessageSend(m.ChannelID, DIFF_MSG_START+"- /updateroles ERROR: EXECUTION IN PROGRESS"+DIFF_MSG_END)
 			if err != nil {
 				fmt.Println(err)
@@ -186,12 +186,12 @@ func scan_message(s *discordgo.Session, m *discordgo.MessageCreate) {
 				fmt.Println(err)
 				return
 			}
-			rolesCmd_s.isInUse = true
-			rolesCmd_s.session = s
-			rolesCmd_s.AuthorID = m.Author.ID
-			rolesCmd_s.ChannelID = m.ChannelID
-			update_roles(s, m)         //testing new command
-			rolesCmd_s.isInUse = false //reset the data so /updateroles can be used again
+			dangerousCommands.isInUse = true
+			dangerousCommands.session = s
+			dangerousCommands.AuthorID = m.Author.ID
+			dangerousCommands.ChannelID = m.ChannelID
+			update_roles(s, m)                //testing new command
+			dangerousCommands.isInUse = false //reset the data so /updateroles can be used again
 			_, err = s.ChannelMessageSend(m.ChannelID, DIFF_MSG_START+"+ /updateroles ROLE UPDATE COMPLETE"+DIFF_MSG_END)
 			if err != nil {
 				fmt.Println(err)
@@ -228,13 +228,13 @@ func scan_message(s *discordgo.Session, m *discordgo.MessageCreate) {
 	}
 
 	/* REMOVE THIS LATER, NO LONGER NEEDED?
-	if rolesCmd_s.isInUse && rolesCmd_s.AuthorID == m.Author.ID {
+	if dangerousCommands.isInUse && dangerousCommands.AuthorID == m.Author.ID {
 		_, err := s.ChannelMessageSend(m.ChannelID, "[:sparkles:] Updating races! ")
 		if err != nil {
 			fmt.Println(err)
 		}
 		update_roles(s, m)              //testing
-		rolesCmd_s.isInUse = false //reset the data so /assignroles can be used again
+		dangerousCommands.isInUse = false //reset the data so /assignroles can be used again
 	}
 	*/
 }
@@ -274,7 +274,7 @@ func test(s *discordgo.Session, m *discordgo.MessageCreate) string {
 			fmt.Println(err)
 		}
 		//TODO: We should save a list of the newly created role IDs so we can simply remove a batch of incorrectly created roles
-		newly_created_roles = append(newly_created_roles, new_role.ID)
+		newlyCreatedRoles = append(newlyCreatedRoles, new_role.ID)
 
 	}
 
@@ -310,7 +310,7 @@ func deleteroles(s *discordgo.Session, m *discordgo.MessageCreate) {
 	_, err := s.ChannelMessageSend(m.ChannelID, FIX_MSG_START+"+ /deleteroles DELETING ROLES"+FIX_MSG_END)
 
 	checkError(err)
-	for _, role_id := range newly_created_roles {
+	for _, role_id := range newlyCreatedRoles {
 		cordMessage := fmt.Sprintf("> Deleting <@%s>\n", role_id)
 		_, err = s.ChannelMessageSend(m.ChannelID, cordMessage)
 		checkError(err)
@@ -344,15 +344,15 @@ func update_roles(dg *discordgo.Session, m *discordgo.MessageCreate) {
 
 	// 2. Create map of username#discriminator to discord_id
 	// and also a map of discord_id -> bool to check if they exist
-	//discord_name_to_id := make(map[string]string)
-	//discord_id_exists := make(map[string]bool)
+	//discordNameToID := make(map[string]string)
+	//discordIDExists := make(map[string]bool)
 	for _, u := range discordUsers {
-		discord_name_to_id[u.User.String()] = u.User.ID
-		discord_id_exists[u.User.ID] = true
+		discordNameToID[u.User.String()] = u.User.ID
+		discordIDExists[u.User.ID] = true
 	}
-	// used to check if a role by name already exists: if discord_role_exists[rolename] {...}
+	// used to check if a role by name already exists: if discordRoleExsits[rolename] {...}
 	for _, b := range discordRoles {
-		discord_role_exists[b.Name] = true
+		discordRoleExsits[b.Name] = true
 	}
 
 	/* Get sheet state
@@ -554,10 +554,10 @@ func update_roles(dg *discordgo.Session, m *discordgo.MessageCreate) {
 
 		//get the discordname and the discorduser id for the player we're on in the loop
 		cordName := sheetPlayers[screen_name].discord_name
-		cordUserid := discord_name_to_id[cordName]
+		cordUserid := discordNameToID[cordName]
 
 		// Check if the user even exists on the server
-		if !discord_id_exists[cordUserid] {
+		if !discordIDExists[cordUserid] {
 			//fmt.Println("Error: couldn't find the user", screen_name, "on discord") //debug
 			continue // skip if the user doesn't exist
 		}
@@ -709,7 +709,7 @@ func update_roles(dg *discordgo.Session, m *discordgo.MessageCreate) {
 	// Create Teams that don't exist yet
 	// 1337
 	for _, n := range sheetsTeamList {
-		if discord_role_exists[n] {
+		if discordRoleExsits[n] {
 			continue
 		} else {
 			// create the role
@@ -717,7 +717,7 @@ func update_roles(dg *discordgo.Session, m *discordgo.MessageCreate) {
 			checkError(err)
 			// save the role id so we can delete it later
 			new_role_discord_id := new_role.ID
-			newly_created_roles = append(newly_created_roles, new_role_discord_id)
+			newlyCreatedRoles = append(newlyCreatedRoles, new_role_discord_id)
 			// name the role correctly
 			new_role, err = dg.GuildRoleEdit(m.GuildID, new_role_discord_id, n, NEON_GREEN, false, 0, true)
 			checkError(err)
@@ -752,7 +752,7 @@ func update_roles(dg *discordgo.Session, m *discordgo.MessageCreate) {
 		entry := sheetTeams[team]
 
 		//make sure in the updated entry we have the userid, we need it in thext next loop
-		usr.discord_id = discord_name_to_id[usr.discord_name]
+		usr.discord_id = discordNameToID[usr.discord_name]
 		entry.members = append(entry.members, usr)
 
 		sheetTeams[team] = entry //write the entry
@@ -781,7 +781,7 @@ func update_roles(dg *discordgo.Session, m *discordgo.MessageCreate) {
 				var assignment [2]string
 				assignment[0] = id
 				assignment[1] = team_id.ID
-				newly_assigned_roles = append(newly_assigned_roles, assignment)
+				newlyAssignedRoles = append(newlyAssignedRoles, assignment)
 				// send discord message about the role assignment
 				cordUser, err := dg.GuildMember(SERVER_ID, id)
 				checkError(err)
@@ -798,8 +798,8 @@ func update_roles(dg *discordgo.Session, m *discordgo.MessageCreate) {
 
 //// Returns true if the user is found on the discord server
 func (user user_t) exists() bool {
-	discordid := discord_name_to_id[user.discord_name]
-	return discord_id_exists[discordid]
+	discordid := discordNameToID[user.discord_name]
+	return discordIDExists[discordid]
 }
 
 func main() {
