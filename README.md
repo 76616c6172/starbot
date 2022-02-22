@@ -3,15 +3,17 @@ This is a discord bot, written to help the [CPL](https://liquipedia.net/starcraf
 automating away tedious administrative tasks.
 
 ## Completed features
-1. `/updateroles`  
-- Automatically assigns Terran/Zerg/Protoss and Coach/Player/Assistant
-  roles based on google sheet
-  (requires hardcoded AUTHORIZED_USERS, valid google API Token,
+1. `/assignroles`  
+- Assign roles based on Google Sheets (assigns Terran/Zerg/Protoss and Coach/Player/Assistant
+  roles, creates and assigns new team roles as needed).
   correct spreadsheet ID, and correct role ID strings.
+1. `/deleteroles`  
+- Delete previously created roles in batches (interactively prompts to select batch of roles to delete).
+
 
 ## WIP/Roadmap/Planned features
-1. Automatically create/track assign teams based on google-sheets
-1. Track user name changes and update google-sheets
+1. Associate username with discord_ID and save to Google Sheets
+1. Track user name changes and update Google Sheets with new name
 
 ## Usage:
 ```bash

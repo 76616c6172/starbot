@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"strconv"
 	"strings"
 	"syscall"
 
@@ -24,20 +25,22 @@ The values here all need to be set correctly for all functionality to work!
 // Hardcode all IDs that are allowed to use potentially dangerous administrative actions, such as /assignroles
 var AUTHORIZED_USERS = map[string]bool{
 	"96492516966174720": true, //valar
+	"93204976779694080": true, //Pete aka Pusagi
 }
 
-const SPREADSHEET_ID string = "1K-jV6-CUmjOSPW338MS8gXAYtYNW9qdMeB7XMEiQyn0" // google sheet ID
-const SERVER_ID string = "856762567414382632"                                // the discord server ID
-const ZERG_ROLE_ID string = "941808009984737281"
-const TERRAN_ROLE_ID string = "941808071817187389"
-const PROTOSS_ROLE_ID string = "941808145993441331"
-const TIER0_ROLE_ID string = "942081263358070794"
-const TIER1_ROLE_ID string = "942081322325794839"
-const TIER2_ROLE_ID string = "942081354353487872"
-const TIER3_ROLE_ID string = "942081409500213308"
-const COACH_ROLE_ID string = "942083540739317811"
-const ASST_COACH_ROLE_ID string = "941808582410764288"
-const PLAYER_ROLE_ID string = "942083605667131443"
+const SPREADSHEET_ID string = " 1Xd0ohSMrYKsB-d0g3OgbovA3BV4NntQg_ZXjDJ7js8I" // google sheet ID
+const SERVER_ID string = "426172214677602304"                                 // the discord server ID
+const ZERG_ROLE_ID string = "426370952402698270"
+const TERRAN_ROLE_ID string = "426371039241437184"
+const PROTOSS_ROLE_ID string = "426371009982103555"
+const TIER0_ROLE_ID string = "686335315492732963"
+const TIER1_ROLE_ID string = "486932541396221962"
+const TIER2_ROLE_ID string = "486932586724065285"
+const TIER3_ROLE_ID string = "486932645519818752"
+const COACH_ROLE_ID string = "426370872740413440"
+const ASST_COACH_ROLE_ID string = "514179771295334420"
+
+//const PLAYER_ROLE_ID string = "" // no longer needed
 
 // Constants for use on get_sheet_state logic
 const STAFF int = -1
@@ -58,19 +61,17 @@ const AVAILABLE_COMMANDS string = `
 [ /help        - show commands                        ]
 [ /test        - test command                         ]
 [                                                     ]
-[ /updateroles - create and assign roles              ]
-[ /undoroles   - unassign previous batch of roles     ]
+[ /assignroles - create and assign roles              ]
 [ /deleteroles - delete previously created roles      ]
 `
+
+//[ /unassignroles   - unassign previous batch of roles     ]
 
 // Discord message formatting strings
 const DIFF_MSG_START string = "```diff\n"
 const DIFF_MSG_END string = "\n```"
 const FIX_MSG_START string = "```fix\n"
 const FIX_MSG_END string = "\n```"
-
-// debug this is temporary
-var NEW_BATCH string = "batch 1"
 
 // Used during parsing logic for "Teams" spreadsheet
 var NOT_PLAYER_NAME = map[string]bool{
@@ -121,6 +122,7 @@ type dangerousCommands_t struct {
 	AuthorID  string             //author who last initiated /assignroles
 	ChannelID string             //channel where /assignroles was initiated from
 	session   *discordgo.Session //the current session
+	cmdName   string
 }
 
 //##### End of data structures
@@ -128,13 +130,14 @@ type dangerousCommands_t struct {
 /* #####
 Global vars
 ##### */
-var newlyCreatedRoles []string            // Holds newly created discord role IDs
-var newlyAssignedRoles [][2]string        //[roleid][userid]
-var dangerousCommands dangerousCommands_t // info about /update roles command while being used
-var discordNameToID = map[string]string{} // Used to lookup discordid from discord name
-var discordIDExists = map[string]bool{}   // Used to check if the user exists on the server
-var discordRoleExsits = map[string]bool{} // Used to check if the user exists on the server
-var createdRoles = map[string][]team_t{}  //[batchName]{roleid, roleid, roleid, roleid}
+var NEW_BATCH_NAME string                     // Name of a batch of newly created roles
+var newlyCreatedRoles []string                // Holds newly created discord role IDs
+var newlyAssignedRoles [][2]string            //[roleid][userid]
+var dangerousCommands dangerousCommands_t     // info about /update roles command while being used
+var discordNameToID = map[string]string{}     // Used to lookup discordid from discord name
+var discordIDExists = map[string]bool{}       // Used to check if the user exists on the server
+var discordRoleExsits = map[string]bool{}     // Used to check if the user exists on the server
+var batchCreatedRoles = map[string][]team_t{} //[batchName]{roleid, roleid, roleid, roleid}
 //##### End of global vars
 
 // error check as a func because it's annoying to write "if err != nil { ... }" over and over
@@ -153,18 +156,38 @@ func scan_message(s *discordgo.Session, m *discordgo.MessageCreate) {
 		return
 	}
 
-	// Respond to specific messages
+	// Trigger on interactive commands
+	if dangerousCommands.isInUse && m.Author.ID == dangerousCommands.AuthorID && AUTHORIZED_USERS[m.Author.ID] {
+		switch dangerousCommands.cmdName {
+
+		case "/deleteroles":
+			if deleteroles_check_input(m.Content) {
+				deleteroles(s, m, m.Content) // run role deletion
+			} else {
+				reset_dangerous_commands_status()
+				_, err := s.ChannelMessageSend(m.ChannelID, DIFF_MSG_START+"- /deleteroles ERROR: INVALID SELECTION"+DIFF_MSG_END)
+				checkError(err)
+			}
+		}
+	}
+
+	// Handle first use or non-interactive commands
 	switch m.Content {
 	case "/deleteroles":
-		if AUTHORIZED_USERS[m.Author.ID] && !dangerousCommands.isInUse { // if the user is authorized, proceed with the operation
+		if !AUTHORIZED_USERS[m.Author.ID] { // Check for Authorization
+			_, err := s.ChannelMessageSend(m.ChannelID, DIFF_MSG_START+"- /deleteroles ERROR: "+m.Author.Username+" IS NOT AUTHORIZED"+DIFF_MSG_END)
+			checkError(err)
+			return
+		}
+		if !dangerousCommands.isInUse { // Check if dangerous commands are available (onely one at a time is allowed)
 			dangerousCommands.isInUse = true
 			dangerousCommands.session = s
 			dangerousCommands.AuthorID = m.Author.ID
 			dangerousCommands.ChannelID = m.ChannelID
-			deleteroles(s, m)                 // run role deletion
-			dangerousCommands.isInUse = false //reset the data so /updateroles can be used again
+			dangerousCommands.cmdName = "/deleteroles"
+			select_batch_to_delete(s, m)
 		} else {
-			_, err := s.ChannelMessageSend(m.ChannelID, DIFF_MSG_START+"- /deleteroles ERROR: "+m.Author.Username+" IS NOT AUTHORIZED"+DIFF_MSG_END)
+			_, err := s.ChannelMessageSend(m.ChannelID, DIFF_MSG_START+"- /deleteroles ERROR: "+m.Author.Username+" DANGEROUS COMMAND IS IN USE"+DIFF_MSG_END)
 			if err != nil {
 				fmt.Println(err)
 			}
@@ -176,16 +199,21 @@ func scan_message(s *discordgo.Session, m *discordgo.MessageCreate) {
 		if err != nil {
 			fmt.Println(err)
 		}
-	case "/updateroles":
+
+	case "/unassignroles": //not implemented yet
+		_, err := s.ChannelMessageSend(m.ChannelID, "/unassignroles is not implemented yet")
+		checkError(err)
+
+	case "/assignroles":
 		if dangerousCommands.isInUse { //check if this command is in use first and disallow simultanious use
-			_, err := s.ChannelMessageSend(m.ChannelID, DIFF_MSG_START+"- /updateroles ERROR: EXECUTION IN PROGRESS"+DIFF_MSG_END)
+			_, err := s.ChannelMessageSend(m.ChannelID, DIFF_MSG_START+"- /assignroles ERROR: EXECUTION IN PROGRESS"+DIFF_MSG_END)
 			if err != nil {
 				fmt.Println(err)
 			}
 			return
 		}
 		if AUTHORIZED_USERS[m.Author.ID] { // if the user is authorized, proceed with the operation
-			_, err := s.ChannelMessageSend(m.ChannelID, FIX_MSG_START+"+ /updateroles ROLE UPDATE STARTED"+FIX_MSG_END)
+			_, err := s.ChannelMessageSend(m.ChannelID, FIX_MSG_START+"+ /assignroles ROLE UPDATE STARTED"+FIX_MSG_END)
 			if err != nil {
 				fmt.Println(err)
 				return
@@ -194,9 +222,10 @@ func scan_message(s *discordgo.Session, m *discordgo.MessageCreate) {
 			dangerousCommands.session = s
 			dangerousCommands.AuthorID = m.Author.ID
 			dangerousCommands.ChannelID = m.ChannelID
+			dangerousCommands.cmdName = "/assignroles"
 			update_roles(s, m)                //testing new command
-			dangerousCommands.isInUse = false //reset the data so /updateroles can be used again
-			_, err = s.ChannelMessageSend(m.ChannelID, DIFF_MSG_START+"+ /updateroles ROLE UPDATE COMPLETE"+DIFF_MSG_END)
+			dangerousCommands.isInUse = false //reset the data so /assignroles can be used again
+			_, err = s.ChannelMessageSend(m.ChannelID, DIFF_MSG_START+"+ /assignroles ROLE UPDATE COMPLETE"+DIFF_MSG_END)
 			if err != nil {
 				fmt.Println(err)
 				return
@@ -205,7 +234,7 @@ func scan_message(s *discordgo.Session, m *discordgo.MessageCreate) {
 			return
 
 		} else {
-			_, err := s.ChannelMessageSend(m.ChannelID, DIFF_MSG_START+"- /updateroles ERROR: "+m.Author.Username+" IS NOT AUTHORIZED"+DIFF_MSG_END)
+			_, err := s.ChannelMessageSend(m.ChannelID, DIFF_MSG_START+"- /assignroles ERROR: "+m.Author.Username+" IS NOT AUTHORIZED"+DIFF_MSG_END)
 			if err != nil {
 				fmt.Println(err)
 			}
@@ -245,7 +274,8 @@ func scan_message(s *discordgo.Session, m *discordgo.MessageCreate) {
 
 // Test function executes with side effects and returns final message to be send
 func test(s *discordgo.Session, m *discordgo.MessageCreate) string {
-	message := fmt.Sprint(createdRoles)
+	message := fmt.Sprintln(m.GuildID)
+	message += "<-server ID"
 	return message
 }
 
@@ -309,31 +339,47 @@ func test(s *discordgo.Session, m *discordgo.MessageCreate) string {
 }
 */
 
-// Delete all roles that were created by Starbot since the bot started running
-func deleteroles(s *discordgo.Session, m *discordgo.MessageCreate) {
-	_, err := s.ChannelMessageSend(m.ChannelID, FIX_MSG_START+"+ /deleteroles DELETING ROLES"+FIX_MSG_END)
+func select_batch_to_delete(s *discordgo.Session, m *discordgo.MessageCreate) {
+	var z string
+	for a, b := range batchCreatedRoles {
+		fmt.Println(a)
 
+		x := fmt.Sprintf(a)
+		y := fmt.Sprintln(b)
+		z += x + y + "\n"
+	}
+	_, err := s.ChannelMessageSend(m.ChannelID, FIX_MSG_START+"+ /deleteroles STARTING\n\nPlease enter batchnumber of roles to be deleted from below:\n\n"+z+FIX_MSG_END)
 	checkError(err)
-	for _, role_id := range newlyCreatedRoles {
-		cordMessage := fmt.Sprintf("> Deleting <@%s>\n", role_id)
+}
+
+// Delete all roles that were created by Starbot since the bot started running
+func deleteroles(s *discordgo.Session, m *discordgo.MessageCreate, batchName string) {
+	_, err := s.ChannelMessageSend(m.ChannelID, FIX_MSG_START+"+ /deleteroles DELETING ROLES\n"+FIX_MSG_END)
+	checkError(err)
+
+	//delete each role in the provided batch
+	for _, b := range batchCreatedRoles[batchName] {
+		cordMessage := fmt.Sprintf("> Deleting %s <@%s>\n", b.name, b.discord_id)
 		_, err = s.ChannelMessageSend(m.ChannelID, cordMessage)
 		checkError(err)
-		err = s.GuildRoleDelete(m.GuildID, role_id)
+		err = s.GuildRoleDelete(m.GuildID, b.discord_id)
 		checkError(err)
 	}
 
-	_, err = s.ChannelMessageSend(m.ChannelID, DIFF_MSG_END+"+ /deleteroles ROLE DELETION COMPLETE"+DIFF_MSG_END)
+	// Cleanup and finish
+	delete(batchCreatedRoles, batchName)
+	reset_dangerous_commands_status()
+
+	_, err = s.ChannelMessageSend(m.ChannelID, DIFF_MSG_START+"+ /deleteroles DONE"+DIFF_MSG_END)
 	checkError(err)
 }
 
 // Builds a map of the desired user state (discord roles) from google sheets
 // see: https://developers.google.com/sheets/api/guides/concepts
 //func get_sheet_state(players map[string]user_t, disRoles_m map[string]*discordgo.Role) map[string]user_t {
-
 // Check google sheet and assign roles automatically (create new team roles as needed)
 func update_roles(dg *discordgo.Session, m *discordgo.MessageCreate) {
 	// 0. Get all the roles from the discord and make a map
-	// roles_m["role_name"].*discordgo.Role
 	discordRoles, err := dg.GuildRoles(SERVER_ID)
 	checkError(err)
 	roles_m := make(map[string]*discordgo.Role)
@@ -560,7 +606,6 @@ func update_roles(dg *discordgo.Session, m *discordgo.MessageCreate) {
 
 		// Check if the user even exists on the server
 		if !discordIDExists[cordUserid] {
-			//fmt.Println("Error: couldn't find the user", screen_name, "on discord") //debug
 			continue // skip if the user doesn't exist
 		}
 
@@ -571,8 +616,9 @@ func update_roles(dg *discordgo.Session, m *discordgo.MessageCreate) {
 		switch wishGroup {
 		case PLAYER:
 			group_name = "Player"
-			err := dg.GuildMemberRoleAdd(SERVER_ID, cordUserid, PLAYER_ROLE_ID)
-			checkError(err)
+			// don't try to assign player role since we don't have it anymore
+			//err := dg.GuildMemberRoleAdd(SERVER_ID, cordUserid, PLAYER_ROLE_ID)
+			//checkError(err)
 			err = dg.GuildMemberRoleRemove(SERVER_ID, cordUserid, COACH_ROLE_ID)
 			checkError(err)
 			err = dg.GuildMemberRoleRemove(SERVER_ID, cordUserid, ASST_COACH_ROLE_ID)
@@ -582,8 +628,8 @@ func update_roles(dg *discordgo.Session, m *discordgo.MessageCreate) {
 			group_name = "Coach"
 			err := dg.GuildMemberRoleAdd(SERVER_ID, cordUserid, COACH_ROLE_ID)
 			checkError(err)
-			err = dg.GuildMemberRoleRemove(SERVER_ID, cordUserid, PLAYER_ROLE_ID)
-			checkError(err)
+			//err = dg.GuildMemberRoleRemove(SERVER_ID, cordUserid, PLAYER_ROLE_ID) //no longer needed
+			//checkError(err)
 			err = dg.GuildMemberRoleRemove(SERVER_ID, cordUserid, ASST_COACH_ROLE_ID)
 			checkError(err)
 			didAssignGroupRole = true
@@ -591,8 +637,8 @@ func update_roles(dg *discordgo.Session, m *discordgo.MessageCreate) {
 			group_name = "Assistant Coach"
 			err := dg.GuildMemberRoleAdd(SERVER_ID, cordUserid, ASST_COACH_ROLE_ID)
 			checkError(err)
-			err = dg.GuildMemberRoleRemove(SERVER_ID, cordUserid, PLAYER_ROLE_ID)
-			checkError(err)
+			//err = dg.GuildMemberRoleRemove(SERVER_ID, cordUserid, PLAYER_ROLE_ID) //no longer needed
+			//checkError(err)
 			err = dg.GuildMemberRoleRemove(SERVER_ID, cordUserid, COACH_ROLE_ID)
 			checkError(err)
 			didAssignGroupRole = true
@@ -697,75 +743,51 @@ func update_roles(dg *discordgo.Session, m *discordgo.MessageCreate) {
 			didAssignRaceRole = false
 		}
 	}
-	// Potentially needed data structures?
-	/*
-	   map[string]user_t //map[ign]user_t
 
-	   map[string]string //[role_name]role_id
-	   map[string]string //[ign]discord_id
-	   map[string]string //[ign]discord_name
-
-	   var users []user_t //list of ingame names of tracked users (also called "screen name")
-	   var teams []team_t //list of tracked teams by team name
-	*/
-	// Create Teams that don't exist yet
+	//FIXME: If we manually delete a role that was auto created by Starbot and then try to run more commands
+	// suc as deleteroles, it crashes and it seems to happen here!
+	// my guess is that it has to do with reading something from one of the global data structures and using that
+	// with a call to a func from discordgo and that breaks since the entry is no langer valid due to the manual edit
 	created_new_role := false
 	for _, n := range sheetsTeamList {
 		if discordRoleExsits[n] {
 			continue
 		} else {
-			if !created_new_role {
-				// 1. Creat a new batch for the teams we are about to create
+			if !created_new_role { // Creat a new batch for the teams we are about to create
 				var newTeams []team_t
-				createdRoles[NEW_BATCH] = newTeams
+				NEW_BATCH_NAME = get_batch_name(batchCreatedRoles)
+				batchCreatedRoles[NEW_BATCH_NAME] = newTeams
 				created_new_role = true
 			}
+			entry := batchCreatedRoles[NEW_BATCH_NAME]
+			var nTeam team_t
 			// create the role
 			new_role, err := dg.GuildRoleCreate(m.GuildID)
 			checkError(err)
-			// save the role id so we can delete it later
-			new_role_discord_id := new_role.ID
-			newlyCreatedRoles = append(newlyCreatedRoles, new_role_discord_id)
+			nTeam.discord_id = new_role.ID
+			nTeam.name = n
+			nTeam.exists = true
+
 			// name the role correctly
-			new_role, err = dg.GuildRoleEdit(m.GuildID, new_role_discord_id, n, NEON_GREEN, false, 0, true)
+			new_role, err = dg.GuildRoleEdit(m.GuildID, new_role.ID, n, NEON_GREEN, false, 0, true)
 			checkError(err)
+			entry = append(entry, nTeam)
 
 			//update the map of roles
 			roles_m[n] = new_role
-
-			// WIP
-			//update the role creation history
-			var my_team team_t
-			my_team.discord_id = new_role_discord_id
-			my_team.name = n
-
-			new_batch_of_teams := createdRoles[NEW_BATCH]
-			new_batch_of_teams = append(new_batch_of_teams, my_team)
-			createdRoles[NEW_BATCH] = new_batch_of_teams //save the modified entry
+			batchCreatedRoles[NEW_BATCH_NAME] = entry // save the update to the map
 
 			cordMessage3 := fmt.Sprintf("> Created <%s>\n", new_role.Mention())
 			_, err = dg.ChannelMessageSend(m.ChannelID, cordMessage3)
 		}
 	}
 
-	// To do: copy user info into the sheetTeams map
-	// have:
-	// want: user_t
-
-	// use sheetplayers instead?
-
-	// the problem is
-	// at this point in the code, we don't have sheetTeams[teamname]team_t.members (user_t) populated
-
-	//okay so build a map and shit
+	// Copy user info into the sheetTeams map
 	for _, usr := range sheetPlayers {
 		team := usr.team
 		if len(team) == 0 {
 			continue //skip ahead if no team was found
 		}
-		//name := usr.discord_name
-		//id := usr.discord_id
-		//fmt.Println(screen_name, name, id, "in", team)
 		// write the data to the sheetTeams map so we can use it in the next code block
 		entry := sheetTeams[team]
 
@@ -776,12 +798,13 @@ func update_roles(dg *discordgo.Session, m *discordgo.MessageCreate) {
 		sheetTeams[team] = entry //write the entry
 	}
 
-	//now this should work!
 	// iterate over all teams and assign the teamrole to the members
 	for _, t := range sheetTeams { //for each team in the spreadsheet
 		for _, usr := range t.members { //for each user in the current team
 
 			if usr.exists() == false { // Skip to the next user if the user is not on the server
+				//unfound_members += "ERROR: " + usr.discord_name + "not found on the server\n"
+				_, err = dg.ChannelMessageSend(m.ChannelID, "> "+usr.discord_name+" not found on the server")
 				fmt.Println("ERROR:", usr.discord_name, "not found on the server.")
 				continue
 			}
@@ -790,7 +813,6 @@ func update_roles(dg *discordgo.Session, m *discordgo.MessageCreate) {
 			team := usr.team
 			team_id := roles_m[team]
 
-			//fmt.Println("CHECK 1", cordUser.User.Username, id, team, team_id) //debug
 			err = nil
 			err = dg.GuildMemberRoleAdd(m.GuildID, id, team_id.ID)
 			checkError(err)
@@ -810,9 +832,6 @@ func update_roles(dg *discordgo.Session, m *discordgo.MessageCreate) {
 
 	}
 }
-
-// Workaround needed for exists() method below FIXME: this is not the right approacj
-//type String string
 
 // Helper that returns true if the user is found on the discord server
 func (user user_t) exists() bool {
@@ -835,6 +854,34 @@ func (u user_t) get_team() team_t {
 	team.name = teamname
 
 	return team
+}
+
+// Returns correct batchnumber as string for the new batch
+func get_batch_name(m map[string][]team_t) string {
+	a := len(m)
+	a++
+	return strconv.Itoa(a)
+}
+
+func reset_dangerous_commands_status() {
+	dangerousCommands.isInUse = false
+	dangerousCommands.cmdName = ""
+	dangerousCommands.AuthorID = ""
+}
+
+// Returns true if the user input can be mapped to a batch of auto created roles from batchCreatedRoles
+func deleteroles_check_input(userMessage string) bool {
+	num, err := strconv.Atoi(userMessage)
+	if err != nil {
+		reset_dangerous_commands_status()
+		return false
+	}
+	//check if the input is within the bounds of existing batches
+	if !(num <= len(batchCreatedRoles)) {
+		reset_dangerous_commands_status()
+		return false
+	}
+	return true
 }
 
 func main() {
@@ -873,21 +920,7 @@ func main() {
 
 	/* TESTING WIP:
 	##### */
-
-	// Potentially needed data structures?
-	/*
-	   map[string]user_t //map[ign]user_t
-
-	   map[string]string //[role_name]role_id
-	   map[string]string //[ign]discord_id
-	   map[string]string //[ign]discord_name
-
-	   var users []user_t //list of ingame names of tracked users (also called "screen name")
-	   var teams []team_t //list of tracked teams by team name
-	*/
-
-	//dg.Close()
-	//os.Exit(0)
+	// .. ..
 	//##### End of Testing
 
 	/* Shutdown procedures
