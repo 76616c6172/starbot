@@ -28,17 +28,20 @@ var AUTHORIZED_USERS = map[string]bool{
 	"93204976779694080": true, //Pete aka Pusagi
 }
 
-const SPREADSHEET_ID string = " 1Xd0ohSMrYKsB-d0g3OgbovA3BV4NntQg_ZXjDJ7js8I" // google sheet ID
-const SERVER_ID string = "426172214677602304"                                 // the discord server ID
-const ZERG_ROLE_ID string = "426370952402698270"
-const TERRAN_ROLE_ID string = "426371039241437184"
-const PROTOSS_ROLE_ID string = "426371009982103555"
-const TIER0_ROLE_ID string = "686335315492732963"
-const TIER1_ROLE_ID string = "486932541396221962"
-const TIER2_ROLE_ID string = "486932586724065285"
-const TIER3_ROLE_ID string = "486932645519818752"
-const COACH_ROLE_ID string = "426370872740413440"
-const ASST_COACH_ROLE_ID string = "514179771295334420"
+/* WE ARE ON THE QA BRANCH:
+// HARDCODED IDS link to roles on the Testserver and Test-Sheet */
+const SPREADSHEET_ID string = "1K-jV6-CUmjOSPW338MS8gXAYtYNW9qdMeB7XMEiQyn0" // google sheet ID
+const SERVER_ID string = "856762567414382632"                                // the discord server ID
+const ZERG_ROLE_ID string = "941808009984737281"
+const TERRAN_ROLE_ID string = "941808071817187389"
+const PROTOSS_ROLE_ID string = "941808145993441331"
+const TIER0_ROLE_ID string = "942081263358070794"
+const TIER1_ROLE_ID string = "942081322325794839"
+const TIER2_ROLE_ID string = "942081354353487872"
+const TIER3_ROLE_ID string = "942081409500213308"
+const COACH_ROLE_ID string = "942083540739317811"
+const ASST_COACH_ROLE_ID string = "941808582410764288"
+const PLAYER_ROLE_ID string = "942083605667131443"
 
 //const PLAYER_ROLE_ID string = "" // no longer needed
 
