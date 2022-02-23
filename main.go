@@ -31,7 +31,11 @@ var AUTHORIZED_USERS = map[string]bool{
 /* WE ARE ON THE QA BRANCH:
 // HARDCODED IDS link to roles on the Testserver and Test-Sheet */
 const SPREADSHEET_ID string = "1K-jV6-CUmjOSPW338MS8gXAYtYNW9qdMeB7XMEiQyn0" // google sheet ID
-const SERVER_ID string = "856762567414382632"                                // the discord server ID
+
+const SERVER_ID string = "856762567414382632"                  //TEST SERVER
+const MATCH_REPORTING_CHANNEL_ID string = "945364478973861898" //TEST CHANNEL
+//const SERVER_ID string = "426172214677602304" 											// CPL SERVER
+//const MATCH_REPORTING_CHANNEL_ID string = "945736138864349234"      // CPL CHANNEL
 const ZERG_ROLE_ID string = "941808009984737281"
 const TERRAN_ROLE_ID string = "941808071817187389"
 const PROTOSS_ROLE_ID string = "941808145993441331"
@@ -68,6 +72,8 @@ const AVAILABLE_COMMANDS string = `
 [ /deleteroles - delete previously created roles      ]
 `
 
+const FORMAT_USAGE string = "`G2: player_name 1-0 player_two`"
+
 //[ /unassignroles   - unassign previous batch of roles     ]
 
 // Discord message formatting strings
@@ -75,6 +81,7 @@ const DIFF_MSG_START string = "```diff\n"
 const DIFF_MSG_END string = "\n```"
 const FIX_MSG_START string = "```fix\n"
 const FIX_MSG_END string = "\n```"
+const MATCH_ACCEPTED string = "```diff\n+ Message formatting passes the check\n```"
 
 // Used during parsing logic for "Teams" spreadsheet
 var NOT_PLAYER_NAME = map[string]bool{
@@ -159,7 +166,16 @@ func scan_message(s *discordgo.Session, m *discordgo.MessageCreate) {
 		return
 	}
 
-	// Trigger on interactive commands
+	if m.ChannelID == MATCH_REPORTING_CHANNEL_ID {
+		user_message := m.Content
+		if strings.Contains(user_message, ": ") {
+			return_message := parse_match_result(user_message)
+			_, err := s.ChannelMessageSend(m.ChannelID, return_message)
+			checkError(err)
+		}
+	}
+
+	// Trigger on interactive command:w
 	if dangerousCommands.isInUse && m.Author.ID == dangerousCommands.AuthorID && AUTHORIZED_USERS[m.Author.ID] {
 		switch dangerousCommands.cmdName {
 
@@ -277,8 +293,8 @@ func scan_message(s *discordgo.Session, m *discordgo.MessageCreate) {
 
 // Test function executes with side effects and returns final message to be send
 func test(s *discordgo.Session, m *discordgo.MessageCreate) string {
-	message := fmt.Sprintln(m.GuildID)
-	message += "<-server ID"
+	message := fmt.Sprintln(m.ChannelID)
+	message += "<-channel ID"
 	return message
 }
 
@@ -885,6 +901,121 @@ func deleteroles_check_input(userMessage string) bool {
 		return false
 	}
 	return true
+}
+
+func parse_match_result(user_input string) string {
+	var message string //this will be returned and sent to discord every time a users posts a report
+	var error_message string
+	s := user_input
+	//Format: "G27: player_one 1-0 player_two",
+	//Check that the string contains ": "
+	//So we don't crash later
+	if strings.Contains(s, ": ") { //Check that it has the format of: "G42: bla."
+		s1 := strings.Split(s, ": ")
+		//fmt.Println("GROUP:", s1[0], "RESULT:", s1[1]) //debug
+		//fmt.Println(s1[0])
+		//fmt.Println(group, "---", s2)
+		if s1[0][0] == 'G' { //Extract the group
+			group := s1[0][1:] //this is the group
+			s2 := s1[1][0:]    //this is the rest of the line
+			dashes_count := strings.Count(s2, "-")
+			if dashes_count > 1 { //check if there is more than 1 dash, (some usernames have dashes)
+				error_message += "```diff\n- ERROR: MANY DASHES IN " + s + "\n\nReporting format:\n```"
+				error_message += FORMAT_USAGE
+				fmt.Println("ERRROR: " + s)
+				return error_message
+			}
+			spaces_count := strings.Count(s2, " ")
+			if spaces_count > 2 {
+				error_message += "```diff\n- ERROR: MANY SPACES IN " + s + "\n\nReporting format:\n```"
+				error_message += FORMAT_USAGE
+				fmt.Println("ERRROR: " + s)
+				return error_message
+			}
+			if strings.Contains(s2, "-") { //check that there is a - in the middle? indicating "player_one 5-2 player_two"
+				//TODO: check that there aren't multiple dashes in s2
+				s3 := strings.Split(s2, "-") // Split in the middle, multiple dashes = problem
+				//fmt.Println("Group:", group) //REPORT
+				//fmt.Println(s3) //debug
+				p1 := s3[0] //this contains player_one name and score
+				p2 := s3[1] //this contains player_two name and score
+				player_segment := strings.Split(p1, " ")
+				if len(player_segment) > 1 { //check and extract the player segments
+					//fmt.Println(s) //the whole thing //debug
+					//fmt.Println(player_segment)
+					//extract player 1 name and score:
+					//fmt.Printf("%t, %s\n", player_segment, player_segment) //debug
+					player_one_name := player_segment[0]
+					//Trim and sanitize the player1 remaining string to extract the score
+					//segment_without_space := strings.Replace(a, " ", "")
+					//player_one_score_segment := strings.Join(player_segment[1], "")
+					p1s := player_segment[1]
+					p1s_no_spaces := strings.ReplaceAll(p1s, " ", "")
+					player_one_score := string(p1s_no_spaces[len(p1s_no_spaces)-1]) //last character is player_one's score
+					//p2s_i, err := strconv.Atoi(player_one_score)
+					//if err != nil {
+					//fmt.Println("Error in reading score", err)
+					//}
+					p2s_no_spaces := strings.ReplaceAll(p2, " ", "")
+					player_two_score := string(p2s_no_spaces[0]) //first character here should be player_two's score
+					//p1s_i, err := strconv.Atoi(player_one_score)
+					//if err != nil {
+					//fmt.Println("Error in reading score", err)
+					//}
+					player_two_name := p2s_no_spaces[1:]
+
+					/*
+						fmt.Println("Group:", group)
+						fmt.Println(player_one_name, "score:"+player_one_score+":")
+						fmt.Println(player_two_name, "score:"+player_two_score+":")
+					*/
+
+					//get numerical score
+					p1s_i, err := strconv.Atoi(player_one_score)
+					p2s_i, err := strconv.Atoi(player_two_score)
+					if err != nil {
+						error_message += "```diff\n- FORMATTING ERROR IN" + s + "\n\nReporting format:\n```"
+						fmt.Println(err)
+						fmt.Println("ERRROR: " + s)
+						error_message += FORMAT_USAGE
+						return error_message
+					}
+
+					// FIXME: BUG BUG BUG
+					message := "GROUP **" + group + "**.)"
+					if p2s_i < p1s_i {
+						message += "\n" + player_one_name + "(" + player_one_score + ") WINNER\n"
+						message += player_two_name + "(" + player_two_score + ") LOOSER\n"
+						message += MATCH_ACCEPTED
+						fmt.Println("REPORT: " + s)
+						return message
+					} else if p2s_i > p1s_i {
+						message += "\n" + player_two_name + "(" + player_two_score + ") WINNER\n"
+						message += player_one_name + "(" + player_one_score + ") LOOSER\n"
+						message += MATCH_ACCEPTED
+						fmt.Println("REPORT: " + s)
+						return message
+					} else {
+						message += "\n" + player_two_name + "(" + player_two_score + ") TIE\n"
+						message += "\n" + player_one_name + "(" + player_one_score + ") TIE\n"
+						message += MATCH_ACCEPTED
+						fmt.Println("REPORT: " + s)
+						return message
+					}
+				}
+			} else {
+				error_message += "```diff\n- FORMATTING ERROR IN" + s + "\n\nReporting format:\n```"
+				fmt.Println("ERRROR: " + s)
+				error_message += FORMAT_USAGE
+				return error_message
+			}
+		}
+	}
+	message += "```diff\n- UNEXPECTED ERROR IN " + s + "\n\nReporting format:\n```"
+	message += error_message
+	fmt.Println("ERRROR: " + s)
+	error_message += FORMAT_USAGE
+	return message
 }
 
 func main() {
