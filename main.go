@@ -985,13 +985,13 @@ func parse_match_result(user_input string) string {
 					message := "GROUP **" + group + "**.)"
 					if p2s_i < p1s_i {
 						message += "\n" + player_one_name + "(" + player_one_score + ") WINNER\n"
-						message += player_two_name + "(" + player_two_score + ") LOOSER\n"
+						message += player_two_name + "(" + player_two_score + ") LOSER\n"
 						message += MATCH_ACCEPTED
 						fmt.Println("REPORT: " + s)
 						return message
 					} else if p2s_i > p1s_i {
 						message += "\n" + player_two_name + "(" + player_two_score + ") WINNER\n"
-						message += player_one_name + "(" + player_one_score + ") LOOSER\n"
+						message += player_one_name + "(" + player_one_score + ") LOSER\n"
 						message += MATCH_ACCEPTED
 						fmt.Println("REPORT: " + s)
 						return message
