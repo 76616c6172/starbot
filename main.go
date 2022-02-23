@@ -32,10 +32,10 @@ var AUTHORIZED_USERS = map[string]bool{
 // HARDCODED IDS link to roles on the Testserver and Test-Sheet */
 const SPREADSHEET_ID string = "1K-jV6-CUmjOSPW338MS8gXAYtYNW9qdMeB7XMEiQyn0" // google sheet ID
 
-//const SERVER_ID string = "856762567414382632"                  //TEST SERVER
-//const MATCH_REPORTING_CHANNEL_ID string = "945364478973861898" //TEST CHANNEL
-const SERVER_ID string = "426172214677602304"                  // CPL SERVER
-const MATCH_REPORTING_CHANNEL_ID string = "945736138864349234" // CPL CHANNEL
+const SERVER_ID string = "856762567414382632"                  //TEST SERVER
+const MATCH_REPORTING_CHANNEL_ID string = "945364478973861898" //TEST CHANNEL
+//const SERVER_ID string = "426172214677602304"                  // CPL SERVER
+//const MATCH_REPORTING_CHANNEL_ID string = "945736138864349234" // CPL CHANNEL
 const ZERG_ROLE_ID string = "941808009984737281"
 const TERRAN_ROLE_ID string = "941808071817187389"
 const PROTOSS_ROLE_ID string = "941808145993441331"
@@ -72,7 +72,7 @@ const AVAILABLE_COMMANDS string = `
 [ /deleteroles - delete previously created roles      ]
 `
 
-const FORMAT_USAGE string = "`G2: player_name 1-0 player_two`"
+const FORMAT_USAGE string = "G2: player_name 1-0 player_two\n```"
 
 //[ /unassignroles   - unassign previous batch of roles     ]
 
@@ -81,7 +81,7 @@ const DIFF_MSG_START string = "```diff\n"
 const DIFF_MSG_END string = "\n```"
 const FIX_MSG_START string = "```fix\n"
 const FIX_MSG_END string = "\n```"
-const MATCH_ACCEPTED string = "```diff\n+ Message formatting passes the check\n```"
+const MATCH_ACCEPTED string = "```diff\n+ ACCEPTED: Message formatting passes the check\n```"
 
 // Used during parsing logic for "Teams" spreadsheet
 var NOT_PLAYER_NAME = map[string]bool{
@@ -169,7 +169,7 @@ func scan_message(s *discordgo.Session, m *discordgo.MessageCreate) {
 	if m.ChannelID == MATCH_REPORTING_CHANNEL_ID {
 		user_message := m.Content
 		if strings.Contains(user_message, ": ") {
-			return_message := parse_match_result(user_message)
+			return_message := parse_match_result(user_message, s, m)
 			_, err := s.ChannelMessageSend(m.ChannelID, return_message)
 			checkError(err)
 		}
@@ -903,7 +903,7 @@ func deleteroles_check_input(userMessage string) bool {
 	return true
 }
 
-func parse_match_result(user_input string) string {
+func parse_match_result(user_input string, sess *discordgo.Session, m *discordgo.MessageCreate) string {
 	var message string //this will be returned and sent to discord every time a users posts a report
 	var error_message string
 	s := user_input
@@ -923,13 +923,14 @@ func parse_match_result(user_input string) string {
 				error_message += "```diff\n- ERROR: MANY DASHES IN " + s + "\n\nReporting format:\n```"
 				error_message += FORMAT_USAGE
 				fmt.Println("ERRROR: " + s)
+				sess.ChannelMessageDelete(MATCH_REPORTING_CHANNEL_ID, m.ID)
 				return error_message
 			}
 			spaces_count := strings.Count(s2, " ")
 			if spaces_count > 2 {
-				error_message += "```diff\n- ERROR: MANY SPACES IN " + s + "\n\nReporting format:\n```"
-				error_message += FORMAT_USAGE
+				error_message += "```diff\n- REJECTED: Many spaces\n\nYour input:\n" + s + "\n\nCorrect format:\n" + FORMAT_USAGE
 				fmt.Println("ERRROR: " + s)
+				sess.ChannelMessageDelete(MATCH_REPORTING_CHANNEL_ID, m.ID)
 				return error_message
 			}
 			if strings.Contains(s2, "-") { //check that there is a - in the middle? indicating "player_one 5-2 player_two"
@@ -974,10 +975,11 @@ func parse_match_result(user_input string) string {
 					p1s_i, err := strconv.Atoi(player_one_score)
 					p2s_i, err := strconv.Atoi(player_two_score)
 					if err != nil {
-						error_message += "```diff\n- FORMATTING ERROR IN" + s + "\n\nReporting format:\n```"
+						error_message += "```diff\n- REJECTED: Formatting error\n\nYour input:\n" + s + "\n\nCorrect format:\n" + FORMAT_USAGE
 						fmt.Println(err)
 						fmt.Println("ERRROR: " + s)
 						error_message += FORMAT_USAGE
+						sess.ChannelMessageDelete(MATCH_REPORTING_CHANNEL_ID, m.ID)
 						return error_message
 					}
 
@@ -1004,17 +1006,19 @@ func parse_match_result(user_input string) string {
 					}
 				}
 			} else {
-				error_message += "```diff\n- FORMATTING ERROR IN" + s + "\n\nReporting format:\n```"
+				error_message += "```diff\n- REJECTED: Formatting error\n\nYour input:\n" + s + "\n\nCorrect format:\n" + FORMAT_USAGE
 				fmt.Println("ERRROR: " + s)
 				error_message += FORMAT_USAGE
+				sess.ChannelMessageDelete(MATCH_REPORTING_CHANNEL_ID, m.ID)
 				return error_message
 			}
 		}
 	}
-	message += "```diff\n- UNEXPECTED ERROR IN " + s + "\n\nReporting format:\n```"
+	error_message += "```diff\n- REJECTED: Unexpected formatting error\n\nYour input:\n" + s + "\n\nCorrect format:\n" + FORMAT_USAGE
 	message += error_message
 	fmt.Println("ERRROR: " + s)
 	error_message += FORMAT_USAGE
+	sess.ChannelMessageDelete(MATCH_REPORTING_CHANNEL_ID, m.ID)
 	return message
 }
 
