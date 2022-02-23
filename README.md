@@ -8,7 +8,7 @@ automating away tedious administrative tasks.
 1. `/assignroles`  
 - Assign roles based on Google Sheets (assigns Terran/Zerg/Protoss and Coach/Player/Assistant
   roles, creates and assigns new team roles as needed).
-  correct spreadsheet ID, and correct role ID strings.
+- Requires Correct spreadsheet ID, valid Google API Token and correct discord role and server IDs .
 2. `/deleteroles`  
 - Delete previously created roles in batches (interactively prompts to select batch of roles to delete).
 3. Semi-Automatic match reporting  
