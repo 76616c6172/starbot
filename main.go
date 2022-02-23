@@ -32,10 +32,10 @@ var AUTHORIZED_USERS = map[string]bool{
 // HARDCODED IDS link to roles on the Testserver and Test-Sheet */
 const SPREADSHEET_ID string = "1K-jV6-CUmjOSPW338MS8gXAYtYNW9qdMeB7XMEiQyn0" // google sheet ID
 
-const SERVER_ID string = "856762567414382632"                  //TEST SERVER
-const MATCH_REPORTING_CHANNEL_ID string = "945364478973861898" //TEST CHANNEL
-//const SERVER_ID string = "426172214677602304"                  // CPL SERVER
-//const MATCH_REPORTING_CHANNEL_ID string = "945736138864349234" // CPL CHANNEL
+//const SERVER_ID string = "856762567414382632"                  //TEST SERVER
+//const MATCH_REPORTING_CHANNEL_ID string = "945364478973861898" //TEST CHANNEL
+const SERVER_ID string = "426172214677602304"                  // CPL SERVER
+/const MATCH_REPORTING_CHANNEL_ID string = "945736138864349234" // CPL CHANNEL
 const ZERG_ROLE_ID string = "941808009984737281"
 const TERRAN_ROLE_ID string = "941808071817187389"
 const PROTOSS_ROLE_ID string = "941808145993441331"
@@ -917,11 +917,19 @@ func parse_match_result(user_input string, sess *discordgo.Session, m *discordgo
 		//fmt.Println(group, "---", s2)
 		if s1[0][0] == 'G' { //Extract the group
 			group := s1[0][1:] //this is the group
-			s2 := s1[1][0:]    //this is the rest of the line
+
+			//check that group is a number
+			if _, err := strconv.ParseInt(group, 10, 64); err != nil {
+				error_message += "```diff\n- REJECTED: Group is not number\n\nYour input:\n" + s + "\n\nCorrect format:\n" + FORMAT_USAGE
+				fmt.Println("GROUP ERRROR: " + s)
+				sess.ChannelMessageDelete(MATCH_REPORTING_CHANNEL_ID, m.ID)
+				return error_message
+			}
+
+			s2 := s1[1][0:] //this is the rest of the line
 			dashes_count := strings.Count(s2, "-")
 			if dashes_count > 1 { //check if there is more than 1 dash, (some usernames have dashes)
-				error_message += "```diff\n- ERROR: MANY DASHES IN " + s + "\n\nReporting format:\n```"
-				error_message += FORMAT_USAGE
+				error_message += "```diff\n- REJECTED: Many dashes\n\nYour input:\n" + s + "\n\nCorrect format:\n" + FORMAT_USAGE
 				fmt.Println("ERRROR: " + s)
 				sess.ChannelMessageDelete(MATCH_REPORTING_CHANNEL_ID, m.ID)
 				return error_message
