@@ -1,5 +1,7 @@
 # Starbot
-This is a discord bot, written to help the [CPL](https://liquipedia.net/starcraft/Coach_Pupil_League) admin team by
+![alt text](https://github.com/76616c6172/starbot/blob/master/creepy_miku_attack.jpg)
+
+Discord bot, written to help the [CPL](https://liquipedia.net/starcraft/Coach_Pupil_League) admin team by
 automating away tedious administrative tasks.
 
 ## Completed features
@@ -9,7 +11,8 @@ automating away tedious administrative tasks.
   correct spreadsheet ID, and correct role ID strings.
 1. `/deleteroles`  
 - Delete previously created roles in batches (interactively prompts to select batch of roles to delete).
-
+1. Semi-Automatic match reporting  
+- Scans messages in preseason-reporting-week2 channel, performs data validation, and appends match reports to local log on disc.
 
 ## WIP/Roadmap/Planned features
 1. Associate username with discord_ID and save to Google Sheets
