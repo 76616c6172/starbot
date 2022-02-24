@@ -17,7 +17,7 @@ import (
 	"google.golang.org/api/sheets/v4"
 )
 
-/* #####
+/* #####jjj
 IMPORTANT HARDCODED CONSTANTS
 The values here all need to be set correctly for all functionality to work!
 ##### */
@@ -28,8 +28,7 @@ var AUTHORIZED_USERS = map[string]bool{
 	"93204976779694080": true, //Pete aka Pusagi
 }
 
-/* WE ARE ON THE QA BRANCH:
-// HARDCODED IDS link to roles on the Testserver and Test-Sheet */
+// HARDCODED IDS link to rrles on the Testserver and Test-Sheet */
 const SPREADSHEET_ID string = "1K-jV6-CUmjOSPW338MS8gXAYtYNW9qdMeB7XMEiQyn0" // google sheet ID
 
 //const SERVER_ID string = "856762567414382632"                  //TEST SERVER
@@ -921,7 +920,7 @@ func parse_match_result(user_input string, sess *discordgo.Session, m *discordgo
 			//check that group is a number
 			if _, err := strconv.ParseInt(group, 10, 64); err != nil {
 				error_message += "```diff\n- REJECTED: Group is not number\n\nYour input:\n" + s + "\n\nCorrect format:\n" + FORMAT_USAGE
-				fmt.Println("GROUP ERRROR: " + s)
+				log_match_accepted(s, false) //log the match in logfile and print to stdout
 				sess.ChannelMessageDelete(MATCH_REPORTING_CHANNEL_ID, m.ID)
 				return error_message
 			}
@@ -930,14 +929,14 @@ func parse_match_result(user_input string, sess *discordgo.Session, m *discordgo
 			dashes_count := strings.Count(s2, "-")
 			if dashes_count > 1 { //check if there is more than 1 dash, (some usernames have dashes)
 				error_message += "```diff\n- REJECTED: Many dashes\n\nYour input:\n" + s + "\n\nCorrect format:\n" + FORMAT_USAGE
-				fmt.Println("ERRROR: " + s)
+				log_match_accepted(s, false) //log the match in logfile and print to stdout
 				sess.ChannelMessageDelete(MATCH_REPORTING_CHANNEL_ID, m.ID)
 				return error_message
 			}
 			spaces_count := strings.Count(s2, " ")
 			if spaces_count > 2 {
 				error_message += "```diff\n- REJECTED: Many spaces\n\nYour input:\n" + s + "\n\nCorrect format:\n" + FORMAT_USAGE
-				fmt.Println("ERRROR: " + s)
+				log_match_accepted(s, false) //log the match in logfile and print to stdout
 				sess.ChannelMessageDelete(MATCH_REPORTING_CHANNEL_ID, m.ID)
 				return error_message
 			}
@@ -985,8 +984,7 @@ func parse_match_result(user_input string, sess *discordgo.Session, m *discordgo
 					if err != nil {
 						error_message += "```diff\n- REJECTED: Formatting error\n\nYour input:\n" + s + "\n\nCorrect format:\n" + FORMAT_USAGE
 						fmt.Println(err)
-						fmt.Println("ERRROR: " + s)
-						error_message += FORMAT_USAGE
+						log_match_accepted(s, false) //log the match in logfile and print to stdout
 						sess.ChannelMessageDelete(MATCH_REPORTING_CHANNEL_ID, m.ID)
 						return error_message
 					}
@@ -997,26 +995,25 @@ func parse_match_result(user_input string, sess *discordgo.Session, m *discordgo
 						message += "\n" + player_one_name + "(" + player_one_score + ") WINNER\n"
 						message += player_two_name + "(" + player_two_score + ") LOSER\n"
 						message += MATCH_ACCEPTED
-						fmt.Println("REPORT: " + s)
+						log_match_accepted(s, true) //log the match in logfile and print to stdout
 						return message
 					} else if p2s_i > p1s_i {
 						message += "\n" + player_two_name + "(" + player_two_score + ") WINNER\n"
 						message += player_one_name + "(" + player_one_score + ") LOSER\n"
 						message += MATCH_ACCEPTED
-						fmt.Println("REPORT: " + s)
+						log_match_accepted(s, true) //log the match in logfile and print to stdout
 						return message
 					} else {
 						message += "\n" + player_two_name + "(" + player_two_score + ") TIE\n"
 						message += "\n" + player_one_name + "(" + player_one_score + ") TIE\n"
 						message += MATCH_ACCEPTED
-						fmt.Println("REPORT: " + s)
+						log_match_accepted(s, true) //log the match in logfile and print to stdout
 						return message
 					}
 				}
 			} else {
 				error_message += "```diff\n- REJECTED: Formatting error\n\nYour input:\n" + s + "\n\nCorrect format:\n" + FORMAT_USAGE
-				fmt.Println("ERRROR: " + s)
-				error_message += FORMAT_USAGE
+				log_match_accepted(s, false) //log the match in logfile and print to stdout
 				sess.ChannelMessageDelete(MATCH_REPORTING_CHANNEL_ID, m.ID)
 				return error_message
 			}
@@ -1024,10 +1021,21 @@ func parse_match_result(user_input string, sess *discordgo.Session, m *discordgo
 	}
 	error_message += "```diff\n- REJECTED: Unexpected formatting error\n\nYour input:\n" + s + "\n\nCorrect format:\n" + FORMAT_USAGE
 	message += error_message
-	fmt.Println("ERRROR: " + s)
-	error_message += FORMAT_USAGE
+	log_match_accepted(s, false) //log the match in logfile and print to stdout
 	sess.ChannelMessageDelete(MATCH_REPORTING_CHANNEL_ID, m.ID)
 	return message
+}
+
+// Log match to index.html and stdout
+// call with True to log accepted, and False to log rejected
+func log_match_accepted(s string, accepted bool) {
+	if accepted {
+		log.Println("[ACCEPTED] " + s + "\n<br>\n")
+		fmt.Println("[ACCEPTED] " + s)
+	} else {
+		log.Println("[REJECTED] " + s + "\n<br>\n")
+		fmt.Println("[REJECTED] " + s)
+	}
 }
 
 func main() {
@@ -1041,6 +1049,14 @@ func main() {
 	}
 
 	TOKEN := os.Args[1] // discord API Token
+
+	// Open file for match report logging
+	f, err := os.OpenFile("index.html", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+	if err != nil {
+		log.Fatalf("Error opening log file: %v", err)
+	}
+	defer f.Close() //close file when main exits
+	log.SetOutput(f)
 
 	// Returns dg of type *session points to the data structures of active session
 	dg, err := discordgo.New("Bot " + TOKEN)
