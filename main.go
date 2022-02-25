@@ -29,7 +29,8 @@ var AUTHORIZED_USERS = map[string]bool{
 }
 
 // HARDCODED IDS link to rrles on the Testserver and Test-Sheet */
-const SPREADSHEET_ID string = "1K-jV6-CUmjOSPW338MS8gXAYtYNW9qdMeB7XMEiQyn0" // google sheet ID
+//const SPREADSHEET_ID string = "1Xd0ohSMrYKsB-d0g3OgbovA3BV4NntQg_ZXjDJ7js8I" // CPL MASTER SPREADSHEET ID
+const SPREADSHEET_ID string = "1K-jV6-CUmjOSPW338MS8gXAYtYNW9qdMeB7XMEiQyn0" // QA TEST SHEEET ID
 
 const SERVER_ID string = "856762567414382632"                  //TEST SERVER
 const MATCH_REPORTING_CHANNEL_ID string = "945364478973861898" //TEST CHANNEL
