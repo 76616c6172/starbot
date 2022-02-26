@@ -28,14 +28,14 @@ var AUTHORIZED_USERS = map[string]bool{
 	"93204976779694080": true, //Pete aka Pusagi
 }
 
-// HARDCODED IDS link to rrles on the Testserver and Test-Sheet */
+// IMPORTANT HARDCODED VALUES:
 //const SPREADSHEET_ID string = "1Xd0ohSMrYKsB-d0g3OgbovA3BV4NntQg_ZXjDJ7js8I" // CPL MASTER SPREADSHEET ID
-const SPREADSHEET_ID string = "1K-jV6-CUmjOSPW338MS8gXAYtYNW9qdMeB7XMEiQyn0" // QA TEST SHEEET ID
+//const SERVER_ID string = "426172214677602304"                                // CPL SERVER
+//const MATCH_REPORTING_CHANNEL_ID string = "945736138864349234"               // CPL CHANNEL
+const SERVER_ID string = "856762567414382632"                                // TEST SERVER
+const MATCH_REPORTING_CHANNEL_ID string = "945364478973861898"               // TEST CHANNEL
+const SPREADSHEET_ID string = "1K-jV6-CUmjOSPW338MS8gXAYtYNW9qdMeB7XMEiQyn0" // TEST TEST SHEEET ID
 
-const SERVER_ID string = "856762567414382632"                  //TEST SERVER
-const MATCH_REPORTING_CHANNEL_ID string = "945364478973861898" //TEST CHANNEL
-//const SERVER_ID string = "426172214677602304"                  // CPL SERVER
-//const MATCH_REPORTING_CHANNEL_ID string = "945736138864349234" // CPL CHANNEL
 const ZERG_ROLE_ID string = "941808009984737281"
 const TERRAN_ROLE_ID string = "941808071817187389"
 const PROTOSS_ROLE_ID string = "941808145993441331"
@@ -1031,10 +1031,10 @@ func parse_match_result(user_input string, sess *discordgo.Session, m *discordgo
 // call with True to log accepted, and False to log rejected
 func log_match_accepted(s string, accepted bool) {
 	if accepted {
-		log.Println("[ACCEPTED] " + s + "\n<br>\n")
+		log.Println("[ACCEPTED] " + s + "<br>\n")
 		fmt.Println("[ACCEPTED] " + s)
 	} else {
-		log.Println("[REJECTED] " + s + "\n<br>\n")
+		log.Println("[REJECTED] " + s + "<br>\n")
 		fmt.Println("[REJECTED] " + s)
 	}
 }
