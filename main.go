@@ -29,12 +29,12 @@ var AUTHORIZED_USERS = map[string]bool{
 }
 
 // IMPORTANT HARDCODED VALUES:
-//const SPREADSHEET_ID string = "1Xd0ohSMrYKsB-d0g3OgbovA3BV4NntQg_ZXjDJ7js8I" // CPL MASTER SPREADSHEET ID
-//const SERVER_ID string = "426172214677602304"                                // CPL SERVER
-//const MATCH_REPORTING_CHANNEL_ID string = "945736138864349234"               // CPL CHANNEL
-const SERVER_ID string = "856762567414382632"                                // TEST SERVER
-const MATCH_REPORTING_CHANNEL_ID string = "945364478973861898"               // TEST CHANNEL
-const SPREADSHEET_ID string = "1K-jV6-CUmjOSPW338MS8gXAYtYNW9qdMeB7XMEiQyn0" // TEST TEST SHEEET ID
+const SPREADSHEET_ID string = "1Xd0ohSMrYKsB-d0g3OgbovA3BV4NntQg_ZXjDJ7js8I" // CPL MASTER SPREADSHEET ID
+const SERVER_ID string = "426172214677602304"                                // CPL SERVER
+const MATCH_REPORTING_CHANNEL_ID string = "945736138864349234"               // CPL CHANNEL
+//const SERVER_ID string = "856762567414382632"                                // TEST SERVER
+//const MATCH_REPORTING_CHANNEL_ID string = "945364478973861898"               // TEST CHANNEL
+//const SPREADSHEET_ID string = "1K-jV6-CUmjOSPW338MS8gXAYtYNW9qdMeB7XMEiQyn0" // TEST TEST SHEEET ID
 
 const ZERG_ROLE_ID string = "941808009984737281"
 const TERRAN_ROLE_ID string = "941808071817187389"
@@ -204,7 +204,7 @@ func scan_message(s *discordgo.Session, m *discordgo.MessageCreate) {
 			dangerousCommands.AuthorID = m.Author.ID
 			dangerousCommands.ChannelID = m.ChannelID
 			dangerousCommands.cmdName = "/deleteroles"
-			select_batch_to_delete(s, m)
+			select_batch_to_delete(s, m) // Show available batches and prompt user selection
 		} else {
 			_, err := s.ChannelMessageSend(m.ChannelID, DIFF_MSG_START+"- /deleteroles ERROR: "+m.Author.Username+" DANGEROUS COMMAND IS IN USE"+DIFF_MSG_END)
 			if err != nil {
@@ -359,15 +359,15 @@ func test(s *discordgo.Session, m *discordgo.MessageCreate) string {
 */
 
 func select_batch_to_delete(s *discordgo.Session, m *discordgo.MessageCreate) {
-	var z string
-	for a, b := range batchCreatedRoles {
-		fmt.Println(a)
-
-		x := fmt.Sprintf(a)
-		y := fmt.Sprintln(b)
-		z += x + y + "\n"
+	var batch string
+	for n, b := range batchCreatedRoles {
+		batch += n + ": "
+		for _, v := range b {
+			batch += fmt.Sprintf("\t<@%s> %s \n", v.discord_id, v.name)
+		}
+		batch += "\n"
 	}
-	_, err := s.ChannelMessageSend(m.ChannelID, FIX_MSG_START+"+ /deleteroles STARTING\n\nPlease enter batchnumber of roles to be deleted from below:\n\n"+z+FIX_MSG_END)
+	_, err := s.ChannelMessageSend(m.ChannelID, FIX_MSG_START+"+ /deleteroles STARTING\n\nPlease enter batchnumber of roles to be deleted from below:\n\n"+FIX_MSG_END+batch)
 	checkError(err)
 }
 
@@ -796,7 +796,7 @@ func update_roles(dg *discordgo.Session, m *discordgo.MessageCreate) {
 			roles_m[n] = new_role
 			batchCreatedRoles[NEW_BATCH_NAME] = entry // save the update to the map
 
-			cordMessage3 := fmt.Sprintf("> Created <%s>\n", new_role.Mention())
+			cordMessage3 := fmt.Sprintf("> Created %s\n", new_role.Mention())
 			_, err = dg.ChannelMessageSend(m.ChannelID, cordMessage3)
 		}
 	}
@@ -822,7 +822,6 @@ func update_roles(dg *discordgo.Session, m *discordgo.MessageCreate) {
 		for _, usr := range t.members { //for each user in the current team
 
 			if usr.exists() == false { // Skip to the next user if the user is not on the server
-				//unfound_members += "ERROR: " + usr.discord_name + "not found on the server\n"
 				_, err = dg.ChannelMessageSend(m.ChannelID, "> "+usr.discord_name+" not found on the server")
 				fmt.Println("ERROR:", usr.discord_name, "not found on the server.")
 				continue
@@ -890,17 +889,17 @@ func reset_dangerous_commands_status() {
 
 // Returns true if the user input can be mapped to a batch of auto created roles from batchCreatedRoles
 func deleteroles_check_input(userMessage string) bool {
-	num, err := strconv.Atoi(userMessage)
-	if err != nil {
+	_, err := strconv.Atoi(userMessage)
+	if err != nil { //Looks like it isn't a number
 		reset_dangerous_commands_status()
 		return false
 	}
 	//check if the input is within the bounds of existing batches
-	if !(num <= len(batchCreatedRoles)) {
+	if _, exists := batchCreatedRoles[userMessage]; exists {
 		reset_dangerous_commands_status()
-		return false
+		return true
 	}
-	return true
+	return false
 }
 
 func parse_match_result(user_input string, sess *discordgo.Session, m *discordgo.MessageCreate) string {
