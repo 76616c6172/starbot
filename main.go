@@ -950,34 +950,15 @@ func parse_match_result(user_input string, sess *discordgo.Session, m *discordgo
 				p2 := s3[1] //this contains player_two name and score
 				player_segment := strings.Split(p1, " ")
 				if len(player_segment) > 1 { //check and extract the player segments
-					//fmt.Println(s) //the whole thing //debug
-					//fmt.Println(player_segment)
 					//extract player 1 name and score:
-					//fmt.Printf("%t, %s\n", player_segment, player_segment) //debug
 					player_one_name := player_segment[0]
 					//Trim and sanitize the player1 remaining string to extract the score
-					//segment_without_space := strings.Replace(a, " ", "")
-					//player_one_score_segment := strings.Join(player_segment[1], "")
 					p1s := player_segment[1]
 					p1s_no_spaces := strings.ReplaceAll(p1s, " ", "")
 					player_one_score := string(p1s_no_spaces[len(p1s_no_spaces)-1]) //last character is player_one's score
-					//p2s_i, err := strconv.Atoi(player_one_score)
-					//if err != nil {
-					//fmt.Println("Error in reading score", err)
-					//}
 					p2s_no_spaces := strings.ReplaceAll(p2, " ", "")
 					player_two_score := string(p2s_no_spaces[0]) //first character here should be player_two's score
-					//p1s_i, err := strconv.Atoi(player_one_score)
-					//if err != nil {
-					//fmt.Println("Error in reading score", err)
-					//}
 					player_two_name := p2s_no_spaces[1:]
-
-					/*
-						fmt.Println("Group:", group)
-						fmt.Println(player_one_name, "score:"+player_one_score+":")
-						fmt.Println(player_two_name, "score:"+player_two_score+":")
-					*/
 
 					//get numerical score
 					p1s_i, err := strconv.Atoi(player_one_score)
@@ -990,7 +971,7 @@ func parse_match_result(user_input string, sess *discordgo.Session, m *discordgo
 						return error_message
 					}
 
-					// FIXME: BUG BUG BUG
+					// send discord messagge and log as accepted
 					message := "GROUP **" + group + "**.)"
 					if p2s_i < p1s_i {
 						message += "\n" + player_one_name + "(" + player_one_score + ") WINNER\n"
@@ -1012,7 +993,8 @@ func parse_match_result(user_input string, sess *discordgo.Session, m *discordgo
 						return message
 					}
 				}
-			} else {
+
+			} else { // send error message and log as rejected
 				error_message += "```diff\n- REJECTED: Formatting error\n\nYour input:\n" + s + "\n\nCorrect format:\n" + FORMAT_USAGE
 				log_match_accepted(s, false) //log the match in logfile and print to stdout
 				sess.ChannelMessageDelete(MATCH_REPORTING_CHANNEL_ID, m.ID)
