@@ -1031,10 +1031,10 @@ func parse_match_result(user_input string, sess *discordgo.Session, m *discordgo
 // call with True to log accepted, and False to log rejected
 func log_match_accepted(s string, accepted bool) {
 	if accepted {
-		log.Println("[ACCEPTED] " + s + "\n<br>\n")
+		log.Println("[ACCEPTED] " + s + "<br>\n")
 		fmt.Println("[ACCEPTED] " + s)
 	} else {
-		log.Println("[REJECTED] " + s + "\n<br>\n")
+		log.Println("[REJECTED] " + s + "<br>\n")
 		fmt.Println("[REJECTED] " + s)
 	}
 }
