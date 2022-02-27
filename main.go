@@ -1,7 +1,9 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"encoding/gob"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -105,22 +107,22 @@ var NOT_PLAYER_NAME = map[string]bool{
 ##### */
 
 type user_t struct {
-	ign          string //ingame name
-	discord_name string
-	discord_id   string
-	race         string
-	tier         int //0, 1, 2, or 3
-	group        int //Coach, Assistant Coach, or Player
-	team         string
+	Ign          string //ingame name
+	Discord_name string
+	Discord_id   string
+	Race         string
+	Tier         int //0, 1, 2, or 3
+	Group        int //Coach, Assistant Coach, or Player
+	Team         string
 }
 
 // Struct to store information about a team-role
 type team_t struct {
-	name       string
-	discord_id string
-	members    []user_t
-	color      int
-	exists     bool
+	Name       string
+	Discord_id string
+	Members    []user_t
+	Color      int
+	Exists     bool
 	//mentionable        bool
 	//perms              int64
 	//fully_created_role discordgo.Role
@@ -363,7 +365,7 @@ func select_batch_to_delete(s *discordgo.Session, m *discordgo.MessageCreate) {
 	for n, b := range batchCreatedRoles {
 		batch += n + ": "
 		for _, v := range b {
-			batch += fmt.Sprintf("\t<@%s> %s \n", v.discord_id, v.name)
+			batch += fmt.Sprintf("\t<@%s> %s \n", v.Discord_id, v.Name)
 		}
 		batch += "\n"
 	}
@@ -378,10 +380,10 @@ func deleteroles(s *discordgo.Session, m *discordgo.MessageCreate, batchName str
 
 	//delete each role in the provided batch
 	for _, b := range batchCreatedRoles[batchName] {
-		cordMessage := fmt.Sprintf("> Deleting %s <@%s>\n", b.name, b.discord_id)
+		cordMessage := fmt.Sprintf("> Deleting %s <@%s>\n", b.Name, b.Discord_id)
 		_, err = s.ChannelMessageSend(m.ChannelID, cordMessage)
 		checkError(err)
-		err = s.GuildRoleDelete(m.GuildID, b.discord_id)
+		err = s.GuildRoleDelete(m.GuildID, b.Discord_id)
 		checkError(err)
 	}
 
@@ -503,9 +505,9 @@ func update_roles(dg *discordgo.Session, m *discordgo.MessageCreate) {
 
 		//add player data to the map
 		sheetPlayers[a] = user_t{
-			discord_name: b,
-			race:         c,
-			group:        ug,
+			Discord_name: b,
+			Race:         c,
+			Group:        ug,
 		}
 	}
 
@@ -533,8 +535,8 @@ func update_roles(dg *discordgo.Session, m *discordgo.MessageCreate) {
 		} else {
 			sheetsTeamList = append(sheetsTeamList, x)
 			sheetTeams[x] = team_t{
-				exists: true,
-				name:   x,
+				Exists: true,
+				Name:   x,
 			}
 		}
 	}
@@ -584,28 +586,28 @@ func update_roles(dg *discordgo.Session, m *discordgo.MessageCreate) {
 			if entry, ok := sheetPlayers[screenName]; ok {
 				switch GROUP {
 				case STAFF:
-					entry.team = sheetsTeamList[teamIndex]
-					entry.group = STAFF
+					entry.Team = sheetsTeamList[teamIndex]
+					entry.Group = STAFF
 					sheetPlayers[screenName] = entry
 				case COACHES:
-					entry.team = sheetsTeamList[teamIndex]
-					entry.group = COACHES
+					entry.Team = sheetsTeamList[teamIndex]
+					entry.Group = COACHES
 					sheetPlayers[screenName] = entry
 				case TIER0:
-					entry.team = sheetsTeamList[teamIndex]
-					entry.tier = TIER0
+					entry.Team = sheetsTeamList[teamIndex]
+					entry.Tier = TIER0
 					sheetPlayers[screenName] = entry
 				case TIER1:
-					entry.team = sheetsTeamList[teamIndex]
-					entry.tier = TIER1
+					entry.Team = sheetsTeamList[teamIndex]
+					entry.Tier = TIER1
 					sheetPlayers[screenName] = entry
 				case TIER2:
-					entry.team = sheetsTeamList[teamIndex]
-					entry.tier = TIER2
+					entry.Team = sheetsTeamList[teamIndex]
+					entry.Tier = TIER2
 					sheetPlayers[screenName] = entry
 				case TIER3:
-					entry.team = sheetsTeamList[teamIndex]
-					entry.tier = TIER3
+					entry.Team = sheetsTeamList[teamIndex]
+					entry.Tier = TIER3
 					sheetPlayers[screenName] = entry
 				}
 			}
@@ -620,7 +622,7 @@ func update_roles(dg *discordgo.Session, m *discordgo.MessageCreate) {
 	for screen_name, _ := range sheetPlayers {
 
 		//get the discordname and the discorduser id for the player we're on in the loop
-		cordName := sheetPlayers[screen_name].discord_name
+		cordName := sheetPlayers[screen_name].Discord_name
 		cordUserid := discordNameToID[cordName]
 
 		// Check if the user even exists on the server
@@ -631,7 +633,7 @@ func update_roles(dg *discordgo.Session, m *discordgo.MessageCreate) {
 		// Assign Coach/Assistant Coach/ Player
 		group_name := ""
 		didAssignGroupRole := false // set to true if we assigned Coach, Assistant Coach, or Player role.
-		wishGroup := sheetPlayers[screen_name].group
+		wishGroup := sheetPlayers[screen_name].Group
 		switch wishGroup {
 		case PLAYER:
 			group_name = "Player"
@@ -673,7 +675,7 @@ func update_roles(dg *discordgo.Session, m *discordgo.MessageCreate) {
 		// Assign Zerg/Terran/Protoss
 		race_name := ""
 		didAssignRaceRole := false // set to true if we assigned Zerg, Terran, or Protoss role.
-		wishRace := sheetPlayers[screen_name].race
+		wishRace := sheetPlayers[screen_name].Race
 		switch wishRace {
 		case "Zerg":
 			race_name = "Zerg"
@@ -716,7 +718,7 @@ func update_roles(dg *discordgo.Session, m *discordgo.MessageCreate) {
 		// Assign correct tier
 		tier_name := "Tier 0"
 		didAssignTier := false
-		wishTier := sheetPlayers[screen_name].tier
+		wishTier := sheetPlayers[screen_name].Tier
 		switch wishTier {
 		case TIER0:
 			tier_name = "Tier 0"
@@ -783,9 +785,9 @@ func update_roles(dg *discordgo.Session, m *discordgo.MessageCreate) {
 			// create the role
 			new_role, err := dg.GuildRoleCreate(m.GuildID)
 			checkError(err)
-			nTeam.discord_id = new_role.ID
-			nTeam.name = n
-			nTeam.exists = true
+			nTeam.Discord_id = new_role.ID
+			nTeam.Name = n
+			nTeam.Exists = true
 
 			// name the role correctly
 			new_role, err = dg.GuildRoleEdit(m.GuildID, new_role.ID, n, NEON_GREEN, false, 0, true)
@@ -800,10 +802,17 @@ func update_roles(dg *discordgo.Session, m *discordgo.MessageCreate) {
 			_, err = dg.ChannelMessageSend(m.ChannelID, cordMessage3)
 		}
 	}
+	// Persist the newly created roles on disc
+	// TO DO
+	if created_new_role {
+		fmt.Println("TODO: persist data on disk")
+		store_data(batchCreatedRoles, "batchCreatedRoles")
+		//load_data(&batchCreatedRoles, "batchCreatedRoles")
+	}
 
 	// Copy user info into the sheetTeams map
 	for _, usr := range sheetPlayers {
-		team := usr.team
+		team := usr.Team
 		if len(team) == 0 {
 			continue //skip ahead if no team was found
 		}
@@ -811,26 +820,26 @@ func update_roles(dg *discordgo.Session, m *discordgo.MessageCreate) {
 		entry := sheetTeams[team]
 
 		//make sure in the updated entry we have the userid, we need it in thext next loop
-		usr.discord_id = discordNameToID[usr.discord_name]
-		entry.members = append(entry.members, usr)
+		usr.Discord_id = discordNameToID[usr.Discord_name]
+		entry.Members = append(entry.Members, usr)
 
 		sheetTeams[team] = entry //write the entry
 	}
 
 	// iterate over all teams and assign the teamrole to the members
 	for _, t := range sheetTeams { //for each team in the spreadsheet
-		for _, usr := range t.members { //for each user in the current team
+		for _, usr := range t.Members { //for each user in the current team
 
 			if usr.exists() == false { // Skip to the next user if the user is not on the server
 				//unfound_members += "ERROR: " + usr.discord_name + "not found on the server\n"
 				// debug: don't send message to server for now
 				//_, err = dg.ChannelMessageSend(m.ChannelID, "> "+usr.discord_name+" not found on the server")
-				fmt.Println("ERROR:", usr.discord_name, "not found on the server.")
+				fmt.Println("ERROR:", usr.Discord_name, "not found on the server.")
 				continue
 			}
 
-			id := usr.discord_id
-			team := usr.team
+			id := usr.Discord_id
+			team := usr.Team
 			team_id := roles_m[team]
 
 			err = nil
@@ -855,7 +864,7 @@ func update_roles(dg *discordgo.Session, m *discordgo.MessageCreate) {
 
 // Helper that returns true if the user is found on the discord server
 func (user user_t) exists() bool {
-	discordid := discordNameToID[user.discord_name]
+	discordid := discordNameToID[user.Discord_name]
 	return discordIDExists[discordid]
 }
 
@@ -868,10 +877,10 @@ And how do I want to store this on disc?
 */
 // Helper that returns the team the user belongs to
 func (u user_t) get_team() team_t {
-	teamname := u.team
+	teamname := u.Team
 	// Todo: Lookup the team somewhere
 	var team team_t
-	team.name = teamname
+	team.Name = teamname
 
 	return team
 }
@@ -1022,6 +1031,26 @@ func log_match_accepted(s string, accepted bool) {
 	}
 }
 
+// persist data structures on disc
+func store_data(data interface{}, filename string) {
+	buffer := new(bytes.Buffer)
+	encoder := gob.NewEncoder(buffer)
+	err := encoder.Encode(data)
+	checkError(err)
+	err = ioutil.WriteFile(filename, buffer.Bytes(), 0600)
+	checkError(err)
+}
+
+// load data that was stored on disc
+func load_data(data interface{}, filename string) {
+	raw, err := ioutil.ReadFile(filename)
+	checkError(err)
+	buffer := bytes.NewBuffer(raw)
+	dec := gob.NewDecoder(buffer)
+	err = dec.Decode(data)
+	checkError(err)
+}
+
 func main() {
 	/* Startup procedures:
 	#####	*/
@@ -1068,6 +1097,38 @@ func main() {
 	##### */
 	// .. ..
 	//##### End of Testing
+
+	if _, err := os.Stat("./batchCreatedRoles"); err == nil {
+		load_data(&batchCreatedRoles, "batchCreatedRoles") // file exists so load it
+		//} else if errors.Is(err, os.ErrNotExist) {
+	} else {
+		checkError(err) // file may or may not exist. See err for details.
+	}
+
+	// testing data persistence
+	//important_phrase := "This is very important, please store on disc"
+	//	important := make(map[string]string)
+	//	important["a"] = "this is A"
+	//	important["b"] = "this is B"
+	//make a fake team batch
+	//	important := make(map[string][]team_t)
+	//	var test_team team_t
+	//	test_team.Name = "Samyang Fire"
+	//	test_team.Exists = true
+	//	var test_team2 team_t
+	//	test_team2.Name = "Teamliquid"
+	//	test_team2.Exists = true
+	//	testbatch := make([]team_t, 0)
+	//	testbatch = append(testbatch, test_team, test_team2)
+	//	important["1"] = testbatch
+	//
+	batchCreatedRoles = make(map[string][]team_t)
+
+	//	store_data(important, "./important")
+	//var loaded_phrase string
+	//	loaded_phrase := make(map[string]string)
+	load_data(&batchCreatedRoles, "./batchCreatedRoles")
+	fmt.Println(batchCreatedRoles)
 
 	/* Shutdown procedures
 	##### */
