@@ -390,6 +390,7 @@ func deleteroles(s *discordgo.Session, m *discordgo.MessageCreate, batchName str
 	// Cleanup and finish
 	delete(batchCreatedRoles, batchName)
 	reset_dangerous_commands_status()
+	store_data(batchCreatedRoles, "batchCreatedRoles")
 
 	_, err = s.ChannelMessageSend(m.ChannelID, DIFF_MSG_START+"+ /deleteroles DONE"+DIFF_MSG_END)
 	checkError(err)
@@ -1054,7 +1055,6 @@ func load_data(data interface{}, filename string) {
 func main() {
 	/* Startup procedures:
 	#####	*/
-
 	// Check to make sure a bot auth token was supplied on startup
 	if len(os.Args) < 2 || len(os.Args) > 2 {
 		fmt.Println("Error: You must supply EXACTLY one argument (the bot's authorization token) on startup.")
@@ -1071,7 +1071,7 @@ func main() {
 	defer f.Close() //close file when main exits
 	log.SetOutput(f)
 
-	// Returns dg of type *session points to the data structures of active session
+	// Initiate discord session through the discord API
 	dg, err := discordgo.New("Bot " + TOKEN)
 	if err != nil {
 		fmt.Println("Error creating discord session", err)
@@ -1080,12 +1080,10 @@ func main() {
 	// Register scan_message as a callback func for message events
 	dg.AddHandler(scan_message)
 
-	// Determines which types of events we will receive from discord
-	//dg.Identify.Intents = discordgo.IntentsGuildMessages // Exclusively care about receiving message events
+	// Receive all events on the server
 	dg.Identify.Intents = discordgo.IntentsAll
-	//dg.Identify.Intents = discordgo.IntentsGuilds
 
-	// Establish the discord session through discord bot api
+	// Establish the discord session
 	err = dg.Open()
 	if err != nil {
 		fmt.Println("Error opening connection", err)
@@ -1098,31 +1096,12 @@ func main() {
 	// .. ..
 	//##### End of Testing
 
+	// if data of previously created roles exists on disk load it into memory
 	if _, err := os.Stat("./batchCreatedRoles"); err == nil {
-		load_data(&batchCreatedRoles, "batchCreatedRoles") // file exists so load it
-		//} else if errors.Is(err, os.ErrNotExist) {
+		load_data(&batchCreatedRoles, "batchCreatedRoles")
 	} else {
 		checkError(err) // file may or may not exist. See err for details.
 	}
-
-	// testing data persistence
-	//important_phrase := "This is very important, please store on disc"
-	//	important := make(map[string]string)
-	//	important["a"] = "this is A"
-	//	important["b"] = "this is B"
-	//make a fake team batch
-	//	important := make(map[string][]team_t)
-	//	var test_team team_t
-	//	test_team.Name = "Samyang Fire"
-	//	test_team.Exists = true
-	//	var test_team2 team_t
-	//	test_team2.Name = "Teamliquid"
-	//	test_team2.Exists = true
-	//	testbatch := make([]team_t, 0)
-	//	testbatch = append(testbatch, test_team, test_team2)
-	//	important["1"] = testbatch
-	//
-	batchCreatedRoles = make(map[string][]team_t)
 
 	//	store_data(important, "./important")
 	//var loaded_phrase string
@@ -1132,7 +1111,6 @@ func main() {
 
 	/* Shutdown procedures
 	##### */
-
 	// Keep running until exit signal is received..
 	fmt.Println("Bot is running..")
 	sc := make(chan os.Signal, 1)
