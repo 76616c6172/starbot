@@ -888,9 +888,14 @@ func (u user_t) get_team() team_t {
 
 // Returns correct batchnumber as string for the new batch
 func get_batch_name(m map[string][]team_t) string {
-	a := len(m)
-	a++
-	return strconv.Itoa(a)
+
+	for i := 0; i <= len(m); i++ {
+		num := strconv.Itoa(i)
+		if _, exists := m[num]; !exists {
+			return num
+		}
+	}
+	return "-1" //this should never happen
 }
 
 func reset_dangerous_commands_status() {
