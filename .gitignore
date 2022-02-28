@@ -1,4 +1,6 @@
 *.sh
+*.html
+batchCreatedRoles
 *secret*
 keys*
 keys/*
