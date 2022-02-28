@@ -71,14 +71,12 @@ const AVAILABLE_COMMANDS string = `
 [ /help         - show commands                       ]
 [ /test         - test command                        ]
 [                                                     ]
-[ /scan_missing - identify users based on WebApp      ]
+[ /scan_users   - identify users based on web account ]
 [ /assignroles  - create and assign roles             ]
 [ /deleteroles  - delete previously created roles     ]
 `
 
 const FORMAT_USAGE string = "G2: player_name 1-0 player_two\n```"
-
-//[ /unassignroles   - unassign previous batch of roles     ]
 
 // Discord message formatting strings
 const DIFF_MSG_START string = "```diff\n"
@@ -196,12 +194,17 @@ func scan_message(s *discordgo.Session, m *discordgo.MessageCreate) {
 
 	// Handle first use or non-interactive commands
 	switch m.Content {
-	case "/scan_missing":
+	case "/scan_users":
 		if !AUTHORIZED_USERS[m.Author.ID] { // Check for Authorization
 			_, err := s.ChannelMessageSend(m.ChannelID, DIFF_MSG_START+"- /scan_missing ERROR: "+m.Author.Username+" IS NOT AUTHORIZED"+DIFF_MSG_END)
 			checkError(err)
 			return
 		} else {
+			if dangerousCommands.isInUse { // One at a time
+				_, err := s.ChannelMessageSend(m.ChannelID, DIFF_MSG_START+"- /scan_missing ERROR: Dangerous command is in use\n"+DIFF_MSG_END)
+				checkError(err)
+				return
+			}
 			dangerousCommands.isInUse = true
 			dangerousCommands.cmdName = "/scan_missing"
 			_, err := s.ChannelMessageSend(m.ChannelID, DIFF_MSG_START+"+ /scan_missing SCAN STARTING"+DIFF_MSG_END)
@@ -1150,13 +1153,15 @@ func scan_web_players(s *discordgo.Session, m *discordgo.MessageCreate) {
 			_, err := s.ChannelMessageSend(m.ChannelID, "[ERROR] cant find user: "+b.Discord_account)
 			checkError(err)
 		}
-
 	}
 
 	// find Dada
 	//dada_id := webName_m["dada78641"]
 	//dada := webID_m[dada_id]
 	//fmt.Println(dada)
+
+	// store the data
+	store_data(webName_m, "webName_m")
 }
 
 func main() {
