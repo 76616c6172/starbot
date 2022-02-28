@@ -1,6 +1,7 @@
 *.sh
 *.html
 *secret*
+players.json
 keys*
 keys/*
 Starbot

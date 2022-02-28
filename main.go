@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/gob"
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -67,11 +68,12 @@ const NEON_GREEN int = 2358021
 
 // help cmd text (DONT write longer lines than this, this is the maximum that still looks good on mobile)
 const AVAILABLE_COMMANDS string = `
-[ /help        - show commands                        ]
-[ /test        - test command                         ]
+[ /help         - show commands                       ]
+[ /test         - test command                        ]
 [                                                     ]
-[ /assignroles - create and assign roles              ]
-[ /deleteroles - delete previously created roles      ]
+[ /scan_missing - identify users based on WebApp      ]
+[ /assignroles  - create and assign roles             ]
+[ /deleteroles  - delete previously created roles     ]
 `
 
 const FORMAT_USAGE string = "G2: player_name 1-0 player_two\n```"
@@ -194,6 +196,20 @@ func scan_message(s *discordgo.Session, m *discordgo.MessageCreate) {
 
 	// Handle first use or non-interactive commands
 	switch m.Content {
+	case "/scan_missing":
+		if !AUTHORIZED_USERS[m.Author.ID] { // Check for Authorization
+			_, err := s.ChannelMessageSend(m.ChannelID, DIFF_MSG_START+"- /scan_missing ERROR: "+m.Author.Username+" IS NOT AUTHORIZED"+DIFF_MSG_END)
+			checkError(err)
+			return
+		} else {
+			dangerousCommands.isInUse = true
+			dangerousCommands.cmdName = "/scan_missing"
+			_, err := s.ChannelMessageSend(m.ChannelID, DIFF_MSG_START+"+ /scan_missing SCAN STARTING"+DIFF_MSG_END)
+			scan_web_players(s, m) //run the scan
+			_, err = s.ChannelMessageSend(m.ChannelID, DIFF_MSG_START+"+ /scan_missing USER SCAN COMPLETE"+DIFF_MSG_END)
+			checkError(err)
+		}
+
 	case "/deleteroles":
 		if !AUTHORIZED_USERS[m.Author.ID] { // Check for Authorization
 			_, err := s.ChannelMessageSend(m.ChannelID, DIFF_MSG_START+"- /deleteroles ERROR: "+m.Author.Username+" IS NOT AUTHORIZED"+DIFF_MSG_END)
@@ -888,9 +904,14 @@ func (u user_t) get_team() team_t {
 
 // Returns correct batchnumber as string for the new batch
 func get_batch_name(m map[string][]team_t) string {
-	a := len(m)
-	a++
-	return strconv.Itoa(a)
+
+	for i := 0; i <= len(m); i++ {
+		num := strconv.Itoa(i)
+		if _, exists := m[num]; !exists {
+			return num
+		}
+	}
+	return "-1" //this should never happen
 }
 
 func reset_dangerous_commands_status() {
@@ -1050,6 +1071,92 @@ func load_data(data interface{}, filename string) {
 	dec := gob.NewDecoder(buffer)
 	err = dec.Decode(data)
 	checkError(err)
+}
+
+// Get unique discord IDs for all players on web and save them -> output if we can't find players
+func scan_web_players(s *discordgo.Session, m *discordgo.MessageCreate) {
+	// 1. Get all the users in the discord
+	discordUsers, err := s.GuildMembers(SERVER_ID, "", 1000)
+	checkError(err)
+
+	// 2. Create map of username#discriminator to discord_id
+	for _, u := range discordUsers {
+		discordNameToID[u.User.String()] = u.User.ID
+		discordIDExists[u.User.ID] = true
+	}
+
+	// ioutil deprecated but still works (io wrappers)
+	data_from_players_file, err := ioutil.ReadFile("./players.json")
+	if err != nil {
+		fmt.Println("error: ", err)
+		return
+	}
+
+	// define data structure for unmarshalling
+	// Fields have to be Uppwercase so that unmarshaller can see them from the other package!
+	// We can include lowercase fields but then the unmarshaller won't use them
+	type web_player_t struct { // use this if the json data has different name than Web_player_t
+		WeBUserId             int    `json:"id"`
+		WebName               string `json:"Name"`
+		Discord_account       string
+		Mmr                   int
+		Timezone              string
+		Registration_feedback string
+		Team                  string
+		Tier                  int
+		Cpl_edition           int
+		Elo                   int
+		Availability          []int
+		Helper_role           []int
+		League_role           []int
+		Race                  int
+		Activity              int
+		In_waitlist           bool
+		Wins                  int
+		Losses                int
+		Ties                  int
+		Discord_id            string
+	}
+
+	// put json data into slice of players
+	playersUnmarsh := make([]web_player_t, len(data_from_players_file))
+	err = json.Unmarshal(data_from_players_file, &playersUnmarsh)
+	if err != nil {
+		fmt.Println("error: ", err)
+	}
+
+	// create map of WebUserID -> web_player_t
+	webID_m := make(map[int]web_player_t)
+	for _, b := range playersUnmarsh {
+		webID_m[b.WeBUserId] = b
+	}
+	// create map of playername to webID
+	webName_m := make(map[string]int)
+	for _, b := range playersUnmarsh {
+		webName_m[b.WebName] = b.WeBUserId
+	}
+
+	//go through all players and print their discordname
+	for k, b := range webID_m {
+		id := discordNameToID[b.Discord_account]
+		if discordIDExists[id] { //store the id
+			b.Discord_id = id
+			fmt.Println("Found", b.Discord_account, "with", id)
+			webID_m[k] = b //write the new data to the map
+			_, err := s.ChannelMessageSend(m.ChannelID, "> Found user: "+b.Discord_account+" with snowflake id:"+id)
+			checkError(err)
+		} else {
+			fmt.Println("Missing user:", b.Discord_account)
+			_, err := s.ChannelMessageSend(m.ChannelID, "[ERROR] cant find user: "+b.Discord_account)
+			checkError(err)
+		}
+
+	}
+
+	// find Dada
+	//dada_id := webName_m["dada78641"]
+	//dada := webID_m[dada_id]
+	//fmt.Println(dada)
 }
 
 func main() {
