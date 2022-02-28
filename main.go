@@ -1,7 +1,10 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"encoding/gob"
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"log"
@@ -24,8 +27,8 @@ The values here all need to be set correctly for all functionality to work!
 
 // Hardcode all IDs that are allowed to use potentially dangerous administrative actions, such as /assignroles
 var AUTHORIZED_USERS = map[string]bool{
-	"96492516966174720": true, //valar
-	"93204976779694080": true, //Pete aka Pusagi
+	"96492516966174720": true,  //valar
+	"93204976779694080": false, //Pete aka Pusagi
 }
 
 // IMPORTANT HARDCODED VALUES:
@@ -65,16 +68,15 @@ const NEON_GREEN int = 2358021
 
 // help cmd text (DONT write longer lines than this, this is the maximum that still looks good on mobile)
 const AVAILABLE_COMMANDS string = `
-[ /help        - show commands                        ]
-[ /test        - test command                         ]
+[ /help         - show commands                       ]
+[ /test         - test command                        ]
 [                                                     ]
-[ /assignroles - create and assign roles              ]
-[ /deleteroles - delete previously created roles      ]
+[ /scan_users   - identify users based on web account ]
+[ /assignroles  - create and assign roles             ]
+[ /deleteroles  - delete previously created roles     ]
 `
 
 const FORMAT_USAGE string = "G2: player_name 1-0 player_two\n```"
-
-//[ /unassignroles   - unassign previous batch of roles     ]
 
 // Discord message formatting strings
 const DIFF_MSG_START string = "```diff\n"
@@ -105,22 +107,22 @@ var NOT_PLAYER_NAME = map[string]bool{
 ##### */
 
 type user_t struct {
-	ign          string //ingame name
-	discord_name string
-	discord_id   string
-	race         string
-	tier         int //0, 1, 2, or 3
-	group        int //Coach, Assistant Coach, or Player
-	team         string
+	Ign          string //ingame name
+	Discord_name string
+	Discord_id   string
+	Race         string
+	Tier         int //0, 1, 2, or 3
+	Group        int //Coach, Assistant Coach, or Player
+	Team         string
 }
 
 // Struct to store information about a team-role
 type team_t struct {
-	name       string
-	discord_id string
-	members    []user_t
-	color      int
-	exists     bool
+	Name       string
+	Discord_id string
+	Members    []user_t
+	Color      int
+	Exists     bool
 	//mentionable        bool
 	//perms              int64
 	//fully_created_role discordgo.Role
@@ -192,6 +194,25 @@ func scan_message(s *discordgo.Session, m *discordgo.MessageCreate) {
 
 	// Handle first use or non-interactive commands
 	switch m.Content {
+	case "/scan_users":
+		if !AUTHORIZED_USERS[m.Author.ID] { // Check for Authorization
+			_, err := s.ChannelMessageSend(m.ChannelID, DIFF_MSG_START+"- /scan_missing ERROR: "+m.Author.Username+" IS NOT AUTHORIZED"+DIFF_MSG_END)
+			checkError(err)
+			return
+		} else {
+			if dangerousCommands.isInUse { // One at a time
+				_, err := s.ChannelMessageSend(m.ChannelID, DIFF_MSG_START+"- /scan_missing ERROR: Dangerous command is in use\n"+DIFF_MSG_END)
+				checkError(err)
+				return
+			}
+			dangerousCommands.isInUse = true
+			dangerousCommands.cmdName = "/scan_missing"
+			_, err := s.ChannelMessageSend(m.ChannelID, DIFF_MSG_START+"+ /scan_missing SCAN STARTING"+DIFF_MSG_END)
+			scan_web_players(s, m) //run the scan
+			_, err = s.ChannelMessageSend(m.ChannelID, DIFF_MSG_START+"+ /scan_missing USER SCAN COMPLETE"+DIFF_MSG_END)
+			checkError(err)
+		}
+
 	case "/deleteroles":
 		if !AUTHORIZED_USERS[m.Author.ID] { // Check for Authorization
 			_, err := s.ChannelMessageSend(m.ChannelID, DIFF_MSG_START+"- /deleteroles ERROR: "+m.Author.Username+" IS NOT AUTHORIZED"+DIFF_MSG_END)
@@ -363,7 +384,7 @@ func select_batch_to_delete(s *discordgo.Session, m *discordgo.MessageCreate) {
 	for n, b := range batchCreatedRoles {
 		batch += n + ": "
 		for _, v := range b {
-			batch += fmt.Sprintf("\t<@%s> %s \n", v.discord_id, v.name)
+			batch += fmt.Sprintf("\t<@%s> %s \n", v.Discord_id, v.Name)
 		}
 		batch += "\n"
 	}
@@ -378,16 +399,17 @@ func deleteroles(s *discordgo.Session, m *discordgo.MessageCreate, batchName str
 
 	//delete each role in the provided batch
 	for _, b := range batchCreatedRoles[batchName] {
-		cordMessage := fmt.Sprintf("> Deleting %s <@%s>\n", b.name, b.discord_id)
+		cordMessage := fmt.Sprintf("> Deleting %s <@%s>\n", b.Name, b.Discord_id)
 		_, err = s.ChannelMessageSend(m.ChannelID, cordMessage)
 		checkError(err)
-		err = s.GuildRoleDelete(m.GuildID, b.discord_id)
+		err = s.GuildRoleDelete(m.GuildID, b.Discord_id)
 		checkError(err)
 	}
 
 	// Cleanup and finish
 	delete(batchCreatedRoles, batchName)
 	reset_dangerous_commands_status()
+	store_data(batchCreatedRoles, "batchCreatedRoles")
 
 	_, err = s.ChannelMessageSend(m.ChannelID, DIFF_MSG_START+"+ /deleteroles DONE"+DIFF_MSG_END)
 	checkError(err)
@@ -503,9 +525,9 @@ func update_roles(dg *discordgo.Session, m *discordgo.MessageCreate) {
 
 		//add player data to the map
 		sheetPlayers[a] = user_t{
-			discord_name: b,
-			race:         c,
-			group:        ug,
+			Discord_name: b,
+			Race:         c,
+			Group:        ug,
 		}
 	}
 
@@ -533,8 +555,8 @@ func update_roles(dg *discordgo.Session, m *discordgo.MessageCreate) {
 		} else {
 			sheetsTeamList = append(sheetsTeamList, x)
 			sheetTeams[x] = team_t{
-				exists: true,
-				name:   x,
+				Exists: true,
+				Name:   x,
 			}
 		}
 	}
@@ -584,28 +606,28 @@ func update_roles(dg *discordgo.Session, m *discordgo.MessageCreate) {
 			if entry, ok := sheetPlayers[screenName]; ok {
 				switch GROUP {
 				case STAFF:
-					entry.team = sheetsTeamList[teamIndex]
-					entry.group = STAFF
+					entry.Team = sheetsTeamList[teamIndex]
+					entry.Group = STAFF
 					sheetPlayers[screenName] = entry
 				case COACHES:
-					entry.team = sheetsTeamList[teamIndex]
-					entry.group = COACHES
+					entry.Team = sheetsTeamList[teamIndex]
+					entry.Group = COACHES
 					sheetPlayers[screenName] = entry
 				case TIER0:
-					entry.team = sheetsTeamList[teamIndex]
-					entry.tier = TIER0
+					entry.Team = sheetsTeamList[teamIndex]
+					entry.Tier = TIER0
 					sheetPlayers[screenName] = entry
 				case TIER1:
-					entry.team = sheetsTeamList[teamIndex]
-					entry.tier = TIER1
+					entry.Team = sheetsTeamList[teamIndex]
+					entry.Tier = TIER1
 					sheetPlayers[screenName] = entry
 				case TIER2:
-					entry.team = sheetsTeamList[teamIndex]
-					entry.tier = TIER2
+					entry.Team = sheetsTeamList[teamIndex]
+					entry.Tier = TIER2
 					sheetPlayers[screenName] = entry
 				case TIER3:
-					entry.team = sheetsTeamList[teamIndex]
-					entry.tier = TIER3
+					entry.Team = sheetsTeamList[teamIndex]
+					entry.Tier = TIER3
 					sheetPlayers[screenName] = entry
 				}
 			}
@@ -620,7 +642,7 @@ func update_roles(dg *discordgo.Session, m *discordgo.MessageCreate) {
 	for screen_name, _ := range sheetPlayers {
 
 		//get the discordname and the discorduser id for the player we're on in the loop
-		cordName := sheetPlayers[screen_name].discord_name
+		cordName := sheetPlayers[screen_name].Discord_name
 		cordUserid := discordNameToID[cordName]
 
 		// Check if the user even exists on the server
@@ -631,7 +653,7 @@ func update_roles(dg *discordgo.Session, m *discordgo.MessageCreate) {
 		// Assign Coach/Assistant Coach/ Player
 		group_name := ""
 		didAssignGroupRole := false // set to true if we assigned Coach, Assistant Coach, or Player role.
-		wishGroup := sheetPlayers[screen_name].group
+		wishGroup := sheetPlayers[screen_name].Group
 		switch wishGroup {
 		case PLAYER:
 			group_name = "Player"
@@ -673,7 +695,7 @@ func update_roles(dg *discordgo.Session, m *discordgo.MessageCreate) {
 		// Assign Zerg/Terran/Protoss
 		race_name := ""
 		didAssignRaceRole := false // set to true if we assigned Zerg, Terran, or Protoss role.
-		wishRace := sheetPlayers[screen_name].race
+		wishRace := sheetPlayers[screen_name].Race
 		switch wishRace {
 		case "Zerg":
 			race_name = "Zerg"
@@ -716,7 +738,7 @@ func update_roles(dg *discordgo.Session, m *discordgo.MessageCreate) {
 		// Assign correct tier
 		tier_name := "Tier 0"
 		didAssignTier := false
-		wishTier := sheetPlayers[screen_name].tier
+		wishTier := sheetPlayers[screen_name].Tier
 		switch wishTier {
 		case TIER0:
 			tier_name = "Tier 0"
@@ -783,9 +805,9 @@ func update_roles(dg *discordgo.Session, m *discordgo.MessageCreate) {
 			// create the role
 			new_role, err := dg.GuildRoleCreate(m.GuildID)
 			checkError(err)
-			nTeam.discord_id = new_role.ID
-			nTeam.name = n
-			nTeam.exists = true
+			nTeam.Discord_id = new_role.ID
+			nTeam.Name = n
+			nTeam.Exists = true
 
 			// name the role correctly
 			new_role, err = dg.GuildRoleEdit(m.GuildID, new_role.ID, n, NEON_GREEN, false, 0, true)
@@ -800,10 +822,17 @@ func update_roles(dg *discordgo.Session, m *discordgo.MessageCreate) {
 			_, err = dg.ChannelMessageSend(m.ChannelID, cordMessage3)
 		}
 	}
+	// Persist the newly created roles on disc
+	// TO DO
+	if created_new_role {
+		fmt.Println("TODO: persist data on disk")
+		store_data(batchCreatedRoles, "batchCreatedRoles")
+		//load_data(&batchCreatedRoles, "batchCreatedRoles")
+	}
 
 	// Copy user info into the sheetTeams map
 	for _, usr := range sheetPlayers {
-		team := usr.team
+		team := usr.Team
 		if len(team) == 0 {
 			continue //skip ahead if no team was found
 		}
@@ -811,24 +840,24 @@ func update_roles(dg *discordgo.Session, m *discordgo.MessageCreate) {
 		entry := sheetTeams[team]
 
 		//make sure in the updated entry we have the userid, we need it in thext next loop
-		usr.discord_id = discordNameToID[usr.discord_name]
-		entry.members = append(entry.members, usr)
+		usr.Discord_id = discordNameToID[usr.Discord_name]
+		entry.Members = append(entry.Members, usr)
 
 		sheetTeams[team] = entry //write the entry
 	}
 
 	// iterate over all teams and assign the teamrole to the members
 	for _, t := range sheetTeams { //for each team in the spreadsheet
-		for _, usr := range t.members { //for each user in the current team
+		for _, usr := range t.Members { //for each user in the current team
 
 			if usr.exists() == false { // Skip to the next user if the user is not on the server
-				_, err = dg.ChannelMessageSend(m.ChannelID, "> "+usr.discord_name+" not found on the server")
-				fmt.Println("ERROR:", usr.discord_name, "not found on the server.")
+				_, err = dg.ChannelMessageSend(m.ChannelID, "> "+usr.Discord_name+" not found on the server")
+				fmt.Println("ERROR:", usr.Discord_name, "not found on the server.")
 				continue
 			}
 
-			id := usr.discord_id
-			team := usr.team
+			id := usr.Discord_id
+			team := usr.Team
 			team_id := roles_m[team]
 
 			err = nil
@@ -853,7 +882,7 @@ func update_roles(dg *discordgo.Session, m *discordgo.MessageCreate) {
 
 // Helper that returns true if the user is found on the discord server
 func (user user_t) exists() bool {
-	discordid := discordNameToID[user.discord_name]
+	discordid := discordNameToID[user.Discord_name]
 	return discordIDExists[discordid]
 }
 
@@ -866,19 +895,24 @@ And how do I want to store this on disc?
 */
 // Helper that returns the team the user belongs to
 func (u user_t) get_team() team_t {
-	teamname := u.team
+	teamname := u.Team
 	// Todo: Lookup the team somewhere
 	var team team_t
-	team.name = teamname
+	team.Name = teamname
 
 	return team
 }
 
 // Returns correct batchnumber as string for the new batch
 func get_batch_name(m map[string][]team_t) string {
-	a := len(m)
-	a++
-	return strconv.Itoa(a)
+
+	for i := 0; i <= len(m); i++ {
+		num := strconv.Itoa(i)
+		if _, exists := m[num]; !exists {
+			return num
+		}
+	}
+	return "-1" //this should never happen
 }
 
 func reset_dangerous_commands_status() {
@@ -1020,10 +1054,117 @@ func log_match_accepted(s string, accepted bool) {
 	}
 }
 
+// persist data structures on disc
+func store_data(data interface{}, filename string) {
+	buffer := new(bytes.Buffer)
+	encoder := gob.NewEncoder(buffer)
+	err := encoder.Encode(data)
+	checkError(err)
+	err = ioutil.WriteFile(filename, buffer.Bytes(), 0600)
+	checkError(err)
+}
+
+// load data that was stored on disc
+func load_data(data interface{}, filename string) {
+	raw, err := ioutil.ReadFile(filename)
+	checkError(err)
+	buffer := bytes.NewBuffer(raw)
+	dec := gob.NewDecoder(buffer)
+	err = dec.Decode(data)
+	checkError(err)
+}
+
+// Get unique discord IDs for all players on web and save them -> output if we can't find players
+func scan_web_players(s *discordgo.Session, m *discordgo.MessageCreate) {
+	// 1. Get all the users in the discord
+	discordUsers, err := s.GuildMembers(SERVER_ID, "", 1000)
+	checkError(err)
+
+	// 2. Create map of username#discriminator to discord_id
+	for _, u := range discordUsers {
+		discordNameToID[u.User.String()] = u.User.ID
+		discordIDExists[u.User.ID] = true
+	}
+
+	// ioutil deprecated but still works (io wrappers)
+	data_from_players_file, err := ioutil.ReadFile("./players.json")
+	if err != nil {
+		fmt.Println("error: ", err)
+		return
+	}
+
+	// define data structure for unmarshalling
+	// Fields have to be Uppwercase so that unmarshaller can see them from the other package!
+	// We can include lowercase fields but then the unmarshaller won't use them
+	type web_player_t struct { // use this if the json data has different name than Web_player_t
+		WeBUserId             int    `json:"id"`
+		WebName               string `json:"Name"`
+		Discord_account       string
+		Mmr                   int
+		Timezone              string
+		Registration_feedback string
+		Team                  string
+		Tier                  int
+		Cpl_edition           int
+		Elo                   int
+		Availability          []int
+		Helper_role           []int
+		League_role           []int
+		Race                  int
+		Activity              int
+		In_waitlist           bool
+		Wins                  int
+		Losses                int
+		Ties                  int
+		Discord_id            string
+	}
+
+	// put json data into slice of players
+	playersUnmarsh := make([]web_player_t, len(data_from_players_file))
+	err = json.Unmarshal(data_from_players_file, &playersUnmarsh)
+	if err != nil {
+		fmt.Println("error: ", err)
+	}
+
+	// create map of WebUserID -> web_player_t
+	webID_m := make(map[int]web_player_t)
+	for _, b := range playersUnmarsh {
+		webID_m[b.WeBUserId] = b
+	}
+	// create map of playername to webID
+	webName_m := make(map[string]int)
+	for _, b := range playersUnmarsh {
+		webName_m[b.WebName] = b.WeBUserId
+	}
+
+	//go through all players and print their discordname
+	for k, b := range webID_m {
+		id := discordNameToID[b.Discord_account]
+		if discordIDExists[id] { //store the id
+			b.Discord_id = id
+			fmt.Println("Found", b.Discord_account, "with", id)
+			webID_m[k] = b //write the new data to the map
+			_, err := s.ChannelMessageSend(m.ChannelID, "> Found user: "+b.Discord_account+" with snowflake id:"+id)
+			checkError(err)
+		} else {
+			fmt.Println("Missing user:", b.Discord_account)
+			_, err := s.ChannelMessageSend(m.ChannelID, "[ERROR] cant find user: "+b.Discord_account)
+			checkError(err)
+		}
+	}
+
+	// find Dada
+	//dada_id := webName_m["dada78641"]
+	//dada := webID_m[dada_id]
+	//fmt.Println(dada)
+
+	// store the data
+	store_data(webName_m, "webName_m")
+}
+
 func main() {
 	/* Startup procedures:
 	#####	*/
-
 	// Check to make sure a bot auth token was supplied on startup
 	if len(os.Args) < 2 || len(os.Args) > 2 {
 		fmt.Println("Error: You must supply EXACTLY one argument (the bot's authorization token) on startup.")
@@ -1040,7 +1181,7 @@ func main() {
 	defer f.Close() //close file when main exits
 	log.SetOutput(f)
 
-	// Returns dg of type *session points to the data structures of active session
+	// Initiate discord session through the discord API
 	dg, err := discordgo.New("Bot " + TOKEN)
 	if err != nil {
 		fmt.Println("Error creating discord session", err)
@@ -1049,12 +1190,10 @@ func main() {
 	// Register scan_message as a callback func for message events
 	dg.AddHandler(scan_message)
 
-	// Determines which types of events we will receive from discord
-	//dg.Identify.Intents = discordgo.IntentsGuildMessages // Exclusively care about receiving message events
+	// Receive all events on the server
 	dg.Identify.Intents = discordgo.IntentsAll
-	//dg.Identify.Intents = discordgo.IntentsGuilds
 
-	// Establish the discord session through discord bot api
+	// Establish the discord session
 	err = dg.Open()
 	if err != nil {
 		fmt.Println("Error opening connection", err)
@@ -1067,9 +1206,21 @@ func main() {
 	// .. ..
 	//##### End of Testing
 
+	// if data of previously created roles exists on disk load it into memory
+	if _, err := os.Stat("./batchCreatedRoles"); err == nil {
+		load_data(&batchCreatedRoles, "batchCreatedRoles")
+	} else {
+		checkError(err) // file may or may not exist. See err for details.
+	}
+
+	//	store_data(important, "./important")
+	//var loaded_phrase string
+	//	loaded_phrase := make(map[string]string)
+	load_data(&batchCreatedRoles, "./batchCreatedRoles")
+	fmt.Println(batchCreatedRoles)
+
 	/* Shutdown procedures
 	##### */
-
 	// Keep running until exit signal is received..
 	fmt.Println("Bot is running..")
 	sc := make(chan os.Signal, 1)
