@@ -212,7 +212,6 @@ func scan_message(s *discordgo.Session, m *discordgo.MessageCreate) {
 			dangerousCommands.cmdName = "/scan_missing"
 			_, err := s.ChannelMessageSend(m.ChannelID, DIFF_MSG_START+"+ /scan_missing SCAN STARTING"+DIFF_MSG_END)
 			scan_web_players(s, m) //run the scan
-			_, err = s.ChannelMessageSend(m.ChannelID, DIFF_MSG_START+"+ /scan_missing USER SCAN COMPLETE"+DIFF_MSG_END)
 			checkError(err)
 		}
 
@@ -1088,6 +1087,15 @@ func scan_web_players(s *discordgo.Session, m *discordgo.MessageCreate) {
 	discordUsers, err := s.GuildMembers(SERVER_ID, "", 1000)
 	checkError(err)
 
+	// TODO: we should check to make sure we automatically always send the right requests
+	// Since the server has more than 1k members we have to request 2 batches of 1000 each
+	lasti := len(discordUsers) - 1 //index of last mmember in slice
+	discordUsers2, err := s.GuildMembers(SERVER_ID, discordUsers[lasti].User.ID, 1000)
+	checkError(err)
+
+	//combine both into mega slice
+	discordUsers = append(discordUsers, discordUsers2...)
+
 	// 2. Create map of username#discriminator to discord_id
 	for _, u := range discordUsers {
 		discordNameToID[u.User.String()] = u.User.ID
@@ -1146,15 +1154,19 @@ func scan_web_players(s *discordgo.Session, m *discordgo.MessageCreate) {
 	}
 
 	//go through all players and print their discordname
+	var found int
+	var missing int
 	for k, b := range webID_m {
 		id := discordNameToID[b.Discord_account]
 		if discordIDExists[id] { //store the id
+			found++
 			b.Discord_id = id
 			fmt.Println("Found", b.Discord_account, "with", id)
 			webID_m[k] = b //write the new data to the map
 			_, err := s.ChannelMessageSend(m.ChannelID, "> Found user: "+b.Discord_account+" with snowflake id:"+id)
 			checkError(err)
 		} else {
+			missing++
 			fmt.Println("Missing user:", b.Discord_account)
 			_, err := s.ChannelMessageSend(m.ChannelID, "[ERROR] cant find user: "+b.Discord_account)
 			checkError(err)
@@ -1165,6 +1177,12 @@ func scan_web_players(s *discordgo.Session, m *discordgo.MessageCreate) {
 	//dada_id := webName_m["dada78641"]
 	//dada := webID_m[dada_id]
 	//fmt.Println(dada)
+	message := DIFF_MSG_START
+	message += "+ /scan_missing USER SCAN COMPLETE\n"
+	message += fmt.Sprintf("**Found:** %d\n**Missing:** %d", found, missing)
+	message += DIFF_MSG_END
+	_, err = s.ChannelMessageSend(m.ChannelID, message)
+	checkError(err)
 
 	// store the data
 	store_data(webName_m, "webName_m")
