@@ -13,6 +13,7 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+	"unicode"
 
 	//third party dependencies:
 	"github.com/bwmarrin/discordgo"
@@ -20,7 +21,7 @@ import (
 	"google.golang.org/api/sheets/v4"
 )
 
-/* #####jjj
+/* #####
 IMPORTANT HARDCODED CONSTANTS
 The values here all need to be set correctly for all functionality to work!
 ##### */
@@ -63,7 +64,7 @@ const TIER1 int = 1
 const TIER2 int = 2
 const TIER3 int = 3
 
-// Colors for role creation (decimal values of hex color codes)
+// Discord colors for role creation (decimal values of hex color codes)
 const NEON_GREEN int = 2358021
 
 // help cmd text (DONT write longer lines than this, this is the maximum that still looks good on mobile)
@@ -76,7 +77,7 @@ const AVAILABLE_COMMANDS string = `
 [ /deleteroles  - delete previously created roles     ]
 `
 
-const FORMAT_USAGE string = "G2: player_name 1-0 player_two\n```"
+const MATCH_REPORT_FORMAT_HELP_TEXT string = "G2: player_name 1-0 player_two\n```"
 
 // Discord message formatting strings
 const DIFF_MSG_START string = "```diff\n"
@@ -98,8 +99,6 @@ var NOT_PLAYER_NAME = map[string]bool{
 	"\n": true,
 	"\t": true,
 }
-
-//var GROUP int = 0
 
 //##### End of Hardcoded values
 
@@ -128,6 +127,32 @@ type team_t struct {
 	//fully_created_role discordgo.Role
 }
 
+// define data structure for unmarshalling
+// Fields have to be Uppwercase so that unmarshaller can see them from the other package!
+// We can include lowercase fields but then the unmarshaller won't use them
+type web_player_t struct { // use this if the json data has different name than Web_player_t
+	WebUserId             int    `json:"id"`
+	WebName               string `json:"Name"`
+	DiscordName           string `json:"Discord_account"`
+	Mmr                   int
+	Timezone              string
+	Registration_feedback string
+	Team                  string
+	Tier                  int
+	Cpl_edition           int
+	Elo                   int
+	Availability          []int
+	Helper_role           []int
+	League_role           []int
+	Race                  int
+	Activity              int
+	In_waitlist           bool
+	Wins                  int
+	Losses                int
+	Ties                  int
+	Discord_id            string
+}
+
 // Struct to keep track of how /assignroles is being used (we want to disallow multiple simultanious use)
 type dangerousCommands_t struct {
 	isInUse   bool               //is set to true if command is in use
@@ -142,14 +167,19 @@ type dangerousCommands_t struct {
 /* #####
 Global vars
 ##### */
-var NEW_BATCH_NAME string                     // Name of a batch of newly created roles
-var newlyCreatedRoles []string                // Holds newly created discord role IDs
-var newlyAssignedRoles [][2]string            //[roleid][userid]
-var dangerousCommands dangerousCommands_t     // info about /update roles command while being used
-var discordNameToID = map[string]string{}     // Used to lookup discordid from discord name
-var discordIDExists = map[string]bool{}       // Used to check if the user exists on the server
-var discordRoleExsits = map[string]bool{}     // Used to check if the user exists on the server
-var batchCreatedRoles = map[string][]team_t{} //[batchName]{roleid, roleid, roleid, roleid}
+var NEW_BATCH_NAME string                 // Name of a batch of newly created roles
+var newlyCreatedRoles []string            // Holds newly created discord role IDs
+var newlyAssignedRoles [][2]string        //[roleid][userid]
+var dangerousCommands dangerousCommands_t // info about /update roles command while being used
+// Maps
+var mapDiscordNameToCordID = map[string]string{}     // Used to lookup discordid from discord name
+var mapDiscordIdExists = map[string]bool{}           // Used to check if the user exists on the server
+var mapExistingDiscordRoles = map[string]bool{}      // Used to check if the role exists on the server
+var mapBatchesOfCreatedRoles = map[string][]team_t{} //[batchName]{roleid, roleid, roleid, roleid}
+
+var mapWebUserNameToWebUserId = map[string]int{}  // map of WebApp username to numerical WebApp user ID
+var mapWebUserIdToPlayer = map[int]web_player_t{} //this is the main map I want to use
+
 //##### End of global vars
 
 // error check as a func because it's annoying to write "if err != nil { ... }" over and over
@@ -383,7 +413,7 @@ func test(s *discordgo.Session, m *discordgo.MessageCreate) string {
 
 func select_batch_to_delete(s *discordgo.Session, m *discordgo.MessageCreate) {
 	var batch string
-	for n, b := range batchCreatedRoles {
+	for n, b := range mapBatchesOfCreatedRoles {
 		batch += n + ": "
 		for _, v := range b {
 			batch += fmt.Sprintf("\t<@%s> %s \n", v.Discord_id, v.Name)
@@ -400,7 +430,7 @@ func deleteroles(s *discordgo.Session, m *discordgo.MessageCreate, batchName str
 	checkError(err)
 
 	//delete each role in the provided batch
-	for _, b := range batchCreatedRoles[batchName] {
+	for _, b := range mapBatchesOfCreatedRoles[batchName] {
 		cordMessage := fmt.Sprintf("> Deleting %s <@%s>\n", b.Name, b.Discord_id)
 		_, err = s.ChannelMessageSend(m.ChannelID, cordMessage)
 		checkError(err)
@@ -409,9 +439,9 @@ func deleteroles(s *discordgo.Session, m *discordgo.MessageCreate, batchName str
 	}
 
 	// Cleanup and finish
-	delete(batchCreatedRoles, batchName)
+	delete(mapBatchesOfCreatedRoles, batchName)
 	reset_dangerous_commands_status()
-	store_data(batchCreatedRoles, "batchCreatedRoles")
+	store_data(mapBatchesOfCreatedRoles, "mapBatchesOfCreatedRoles")
 
 	_, err = s.ChannelMessageSend(m.ChannelID, DIFF_MSG_START+"+ /deleteroles DONE"+DIFF_MSG_END)
 	checkError(err)
@@ -436,15 +466,15 @@ func update_roles(dg *discordgo.Session, m *discordgo.MessageCreate) {
 
 	// 2. Create map of username#discriminator to discord_id
 	// and also a map of discord_id -> bool to check if they exist
-	//discordNameToID := make(map[string]string)
-	//discordIDExists := make(map[string]bool)
+	//mapDiscordNameToCordID := make(map[string]string)
+	//mapDiscordIdExists := make(map[string]bool)
 	for _, u := range discordUsers {
-		discordNameToID[u.User.String()] = u.User.ID
-		discordIDExists[u.User.ID] = true
+		mapDiscordNameToCordID[u.User.String()] = u.User.ID
+		mapDiscordIdExists[u.User.ID] = true
 	}
-	// used to check if a role by name already exists: if discordRoleExsits[rolename] {...}
+	// used to check if a role by name already exists: if mapExistingDiscordRoles[rolename] {...}
 	for _, b := range discordRoles {
-		discordRoleExsits[b.Name] = true
+		mapExistingDiscordRoles[b.Name] = true
 	}
 
 	/* Get sheet state
@@ -645,10 +675,10 @@ func update_roles(dg *discordgo.Session, m *discordgo.MessageCreate) {
 
 		//get the discordname and the discorduser id for the player we're on in the loop
 		cordName := sheetPlayers[screen_name].Discord_name
-		cordUserid := discordNameToID[cordName]
+		cordUserid := mapDiscordNameToCordID[cordName]
 
 		// Check if the user even exists on the server
-		if !discordIDExists[cordUserid] {
+		if !mapDiscordIdExists[cordUserid] {
 			continue // skip if the user doesn't exist
 		}
 
@@ -793,16 +823,16 @@ func update_roles(dg *discordgo.Session, m *discordgo.MessageCreate) {
 	// with a call to a func from discordgo and that breaks since the entry is no langer valid due to the manual edit
 	created_new_role := false
 	for _, n := range sheetsTeamList {
-		if discordRoleExsits[n] {
+		if mapExistingDiscordRoles[n] {
 			continue
 		} else {
 			if !created_new_role { // Creat a new batch for the teams we are about to create
 				var newTeams []team_t
-				NEW_BATCH_NAME = get_batch_name(batchCreatedRoles)
-				batchCreatedRoles[NEW_BATCH_NAME] = newTeams
+				NEW_BATCH_NAME = get_batch_name(mapBatchesOfCreatedRoles)
+				mapBatchesOfCreatedRoles[NEW_BATCH_NAME] = newTeams
 				created_new_role = true
 			}
-			entry := batchCreatedRoles[NEW_BATCH_NAME]
+			entry := mapBatchesOfCreatedRoles[NEW_BATCH_NAME]
 			var nTeam team_t
 			// create the role
 			new_role, err := dg.GuildRoleCreate(m.GuildID)
@@ -818,7 +848,7 @@ func update_roles(dg *discordgo.Session, m *discordgo.MessageCreate) {
 
 			//update the map of roles
 			roles_m[n] = new_role
-			batchCreatedRoles[NEW_BATCH_NAME] = entry // save the update to the map
+			mapBatchesOfCreatedRoles[NEW_BATCH_NAME] = entry // save the update to the map
 
 			cordMessage3 := fmt.Sprintf("> Created %s\n", new_role.Mention())
 			_, err = dg.ChannelMessageSend(m.ChannelID, cordMessage3)
@@ -828,8 +858,8 @@ func update_roles(dg *discordgo.Session, m *discordgo.MessageCreate) {
 	// TO DO
 	if created_new_role {
 		fmt.Println("TODO: persist data on disk")
-		store_data(batchCreatedRoles, "batchCreatedRoles")
-		//load_data(&batchCreatedRoles, "batchCreatedRoles")
+		store_data(mapBatchesOfCreatedRoles, "mapBatchesOfCreatedRoles")
+		//load_data(&mapBatchesOfCreatedRoles, "mapBatchesOfCreatedRoles")
 	}
 
 	// Copy user info into the sheetTeams map
@@ -842,7 +872,7 @@ func update_roles(dg *discordgo.Session, m *discordgo.MessageCreate) {
 		entry := sheetTeams[team]
 
 		//make sure in the updated entry we have the userid, we need it in thext next loop
-		usr.Discord_id = discordNameToID[usr.Discord_name]
+		usr.Discord_id = mapDiscordNameToCordID[usr.Discord_name]
 		entry.Members = append(entry.Members, usr)
 
 		sheetTeams[team] = entry //write the entry
@@ -884,8 +914,8 @@ func update_roles(dg *discordgo.Session, m *discordgo.MessageCreate) {
 
 // Helper that returns true if the user is found on the discord server
 func (user user_t) exists() bool {
-	discordid := discordNameToID[user.Discord_name]
-	return discordIDExists[discordid]
+	discordid := mapDiscordNameToCordID[user.Discord_name]
+	return mapDiscordIdExists[discordid]
 }
 
 /* Todo: I haven't decided what kind of maps I want to store that hold the information required
@@ -923,7 +953,7 @@ func reset_dangerous_commands_status() {
 	dangerousCommands.AuthorID = ""
 }
 
-// Returns true if the user input can be mapped to a batch of auto created roles from batchCreatedRoles
+// Returns true if the user input can be mapped to a batch of auto created roles from mapBatchesOfCreatedRoles
 func deleteroles_check_input(userMessage string) bool {
 	_, err := strconv.Atoi(userMessage)
 	if err != nil { //Looks like it isn't a number
@@ -931,7 +961,7 @@ func deleteroles_check_input(userMessage string) bool {
 		return false
 	}
 	//check if the input is within the bounds of existing batches
-	if _, exists := batchCreatedRoles[userMessage]; exists {
+	if _, exists := mapBatchesOfCreatedRoles[userMessage]; exists {
 		reset_dangerous_commands_status()
 		return true
 	}
@@ -955,7 +985,7 @@ func parse_match_result(user_input string, sess *discordgo.Session, m *discordgo
 
 			//check that group is a number
 			if _, err := strconv.ParseInt(group, 10, 64); err != nil {
-				error_message += "```diff\n- REJECTED: Group is not number\n\nYour input:\n" + s + "\n\nCorrect format:\n" + FORMAT_USAGE
+				error_message += "```diff\n- REJECTED: Group is not number\n\nYour input:\n" + s + "\n\nCorrect format:\n" + MATCH_REPORT_FORMAT_HELP_TEXT
 				log_match_accepted(s, false) //log the match in logfile and print to stdout
 				sess.ChannelMessageDelete(MATCH_REPORTING_CHANNEL_ID, m.ID)
 				return error_message
@@ -964,14 +994,14 @@ func parse_match_result(user_input string, sess *discordgo.Session, m *discordgo
 			s2 := s1[1][0:] //this is the rest of the line
 			dashes_count := strings.Count(s2, "-")
 			if dashes_count > 1 { //check if there is more than 1 dash, (some usernames have dashes)
-				error_message += "```diff\n- REJECTED: Many dashes\n\nYour input:\n" + s + "\n\nCorrect format:\n" + FORMAT_USAGE
+				error_message += "```diff\n- REJECTED: Many dashes\n\nYour input:\n" + s + "\n\nCorrect format:\n" + MATCH_REPORT_FORMAT_HELP_TEXT
 				log_match_accepted(s, false) //log the match in logfile and print to stdout
 				sess.ChannelMessageDelete(MATCH_REPORTING_CHANNEL_ID, m.ID)
 				return error_message
 			}
 			spaces_count := strings.Count(s2, " ")
 			if spaces_count > 2 {
-				error_message += "```diff\n- REJECTED: Many spaces\n\nYour input:\n" + s + "\n\nCorrect format:\n" + FORMAT_USAGE
+				error_message += "```diff\n- REJECTED: Many spaces\n\nYour input:\n" + s + "\n\nCorrect format:\n" + MATCH_REPORT_FORMAT_HELP_TEXT
 				log_match_accepted(s, false) //log the match in logfile and print to stdout
 				sess.ChannelMessageDelete(MATCH_REPORTING_CHANNEL_ID, m.ID)
 				return error_message
@@ -999,7 +1029,7 @@ func parse_match_result(user_input string, sess *discordgo.Session, m *discordgo
 					p1s_i, err := strconv.Atoi(player_one_score)
 					p2s_i, err := strconv.Atoi(player_two_score)
 					if err != nil {
-						error_message += "```diff\n- REJECTED: Formatting error\n\nYour input:\n" + s + "\n\nCorrect format:\n" + FORMAT_USAGE
+						error_message += "```diff\n- REJECTED: Formatting error\n\nYour input:\n" + s + "\n\nCorrect format:\n" + MATCH_REPORT_FORMAT_HELP_TEXT
 						fmt.Println(err)
 						log_match_accepted(s, false) //log the match in logfile and print to stdout
 						sess.ChannelMessageDelete(MATCH_REPORTING_CHANNEL_ID, m.ID)
@@ -1030,14 +1060,14 @@ func parse_match_result(user_input string, sess *discordgo.Session, m *discordgo
 				}
 
 			} else { // send error message and log as rejected
-				error_message += "```diff\n- REJECTED: Formatting error\n\nYour input:\n" + s + "\n\nCorrect format:\n" + FORMAT_USAGE
+				error_message += "```diff\n- REJECTED: Formatting error\n\nYour input:\n" + s + "\n\nCorrect format:\n" + MATCH_REPORT_FORMAT_HELP_TEXT
 				log_match_accepted(s, false) //log the match in logfile and print to stdout
 				sess.ChannelMessageDelete(MATCH_REPORTING_CHANNEL_ID, m.ID)
 				return error_message
 			}
 		}
 	}
-	error_message += "```diff\n- REJECTED: Unexpected formatting error\n\nYour input:\n" + s + "\n\nCorrect format:\n" + FORMAT_USAGE
+	error_message += "```diff\n- REJECTED: Unexpected formatting error\n\nYour input:\n" + s + "\n\nCorrect format:\n" + MATCH_REPORT_FORMAT_HELP_TEXT
 	message += error_message
 	log_match_accepted(s, false) //log the match in logfile and print to stdout
 	sess.ChannelMessageDelete(MATCH_REPORTING_CHANNEL_ID, m.ID)
@@ -1046,7 +1076,7 @@ func parse_match_result(user_input string, sess *discordgo.Session, m *discordgo
 
 // Log everything
 func log_message(s string) {
-	log.Println("[logall] " + s + "<br>\n")
+	log.Println("[log-all]       " + s + "<br>\n")
 }
 
 // Log match to index.html and stdout
@@ -1083,6 +1113,9 @@ func load_data(data interface{}, filename string) {
 
 // Get unique discord IDs for all players on web and save them -> output if we can't find players
 func scan_web_players(s *discordgo.Session, m *discordgo.MessageCreate) {
+	var found int
+	var missing int
+	var misspelled int
 	// 1. Get all the users in the discord
 	discordUsers, err := s.GuildMembers(SERVER_ID, "", 1000)
 	checkError(err)
@@ -1098,8 +1131,8 @@ func scan_web_players(s *discordgo.Session, m *discordgo.MessageCreate) {
 
 	// 2. Create map of username#discriminator to discord_id
 	for _, u := range discordUsers {
-		discordNameToID[u.User.String()] = u.User.ID
-		discordIDExists[u.User.ID] = true
+		mapDiscordNameToCordID[u.User.String()] = u.User.ID
+		mapDiscordIdExists[u.User.ID] = true
 	}
 
 	// ioutil deprecated but still works (io wrappers)
@@ -1109,83 +1142,93 @@ func scan_web_players(s *discordgo.Session, m *discordgo.MessageCreate) {
 		return
 	}
 
-	// define data structure for unmarshalling
-	// Fields have to be Uppwercase so that unmarshaller can see them from the other package!
-	// We can include lowercase fields but then the unmarshaller won't use them
-	type web_player_t struct { // use this if the json data has different name than Web_player_t
-		WeBUserId             int    `json:"id"`
-		WebName               string `json:"Name"`
-		Discord_account       string
-		Mmr                   int
-		Timezone              string
-		Registration_feedback string
-		Team                  string
-		Tier                  int
-		Cpl_edition           int
-		Elo                   int
-		Availability          []int
-		Helper_role           []int
-		League_role           []int
-		Race                  int
-		Activity              int
-		In_waitlist           bool
-		Wins                  int
-		Losses                int
-		Ties                  int
-		Discord_id            string
-	}
-
 	// put json data into slice of players
 	playersUnmarsh := make([]web_player_t, len(data_from_players_file))
 	err = json.Unmarshal(data_from_players_file, &playersUnmarsh)
 	if err != nil {
 		fmt.Println("error: ", err)
+
 	}
 
-	// create map of WebUserID -> web_player_t
-	webID_m := make(map[int]web_player_t)
+	// create map of WebUserId -> web_player_t
 	for _, b := range playersUnmarsh {
-		webID_m[b.WeBUserId] = b
+		mapWebUserIdToPlayer[b.WebUserId] = b
 	}
 	// create map of playername to webID
-	webName_m := make(map[string]int)
+	mapWebUserNameToWebUserId := make(map[string]int)
 	for _, b := range playersUnmarsh {
-		webName_m[b.WebName] = b.WeBUserId
+		mapWebUserNameToWebUserId[b.WebName] = b.WebUserId
 	}
 
-	//go through all players and print their discordname
-	var found int
-	var missing int
-	for k, b := range webID_m {
-		id := discordNameToID[b.Discord_account]
-		if discordIDExists[id] { //store the id
+	// Find immuatable discord snowflake ID of all players from players.json and save to internal data structures
+	var alternateName string
+	for webId, player := range mapWebUserIdToPlayer {
+		id := mapDiscordNameToCordID[player.DiscordName]
+		if mapDiscordIdExists[id] { //store the id
 			found++
-			b.Discord_id = id
-			fmt.Println("Found", b.Discord_account, "with", id)
-			webID_m[k] = b //write the new data to the map
-			_, err := s.ChannelMessageSend(m.ChannelID, "> Found user: "+b.Discord_account+" with snowflake id:"+id)
+			player.Discord_id = id
+			mapWebUserIdToPlayer[webId] = player //write the new data to the map
+			_, err := s.ChannelMessageSend(m.ChannelID, "> Found user: "+player.DiscordName+" with snowflake id:"+id)
 			checkError(err)
 		} else {
-			missing++
-			fmt.Println("Missing user:", b.Discord_account)
-			_, err := s.ChannelMessageSend(m.ChannelID, "[ERROR] cant find user: "+b.Discord_account)
-			checkError(err)
+			//Check forcommon capitalization mistake on first letter
+			if unicode.IsLower(rune(player.DiscordName[0])) {
+				alternateName = strings.ToUpper(string(player.DiscordName[0])) + player.DiscordName[1:]
+			} else if unicode.IsUpper(rune(player.DiscordName[0])) {
+				alternateName = strings.ToLower(string(player.DiscordName[0])) + player.DiscordName[1:]
+			}
+			id := mapDiscordNameToCordID[alternateName]
+			if mapDiscordIdExists[id] { //store the id
+				found++
+				player.Discord_id = id
+				mapWebUserIdToPlayer[webId] = player //write the new data to the map
+				misspelled++
+				_, err := s.ChannelMessageSend(m.ChannelID, "> Found misspelled user: "+player.DiscordName+" with snowflake id:"+id)
+				checkError(err)
+			} else {
+				missing++
+				fmt.Println("Missing user:", player.DiscordName)
+				_, err := s.ChannelMessageSend(m.ChannelID, "[ERROR] cant find user: "+player.DiscordName)
+				checkError(err)
+			}
 		}
 	}
 
 	// find Dada
-	//dada_id := webName_m["dada78641"]
-	//dada := webID_m[dada_id]
+	//dada_id := mapWebUserNameToWebUserId["dada78641"]
+	//dada := mapWebUserIdToPlayer[dada_id]
 	//fmt.Println(dada)
 	message := DIFF_MSG_START
 	message += "+ /scan_missing USER SCAN COMPLETE\n"
-	message += fmt.Sprintf("**Found:** %d\n**Missing:** %d", found, missing)
+	message += fmt.Sprintf("**Found:** %d\n**Found Typo'd user:** %d\n**Missing:** %d", found, misspelled, missing)
 	message += DIFF_MSG_END
 	_, err = s.ChannelMessageSend(m.ChannelID, message)
 	checkError(err)
 
-	// store the data
-	store_data(webName_m, "webName_m")
+	// store updated maps
+	store_data(mapWebUserNameToWebUserId, "mapWebUserNameToWebUserId")
+	store_data(mapWebUserNameToWebUserId, "mapWebUserNameToWebUserId")
+	store_data(mapDiscordNameToCordID, "mapDiscordNameToCordID")
+	store_data(mapDiscordIdExists, "mapDiscordIdExists")
+	store_data(mapWebUserIdToPlayer, "mapWebUserIdToPlayer")
+}
+
+// Load persistent data into memory
+func load_persistent_internal_data_structures() {
+	var filenames = [6]string{"mapWebUserNameToWebUserId",
+		"mapWebUserNameToWebUserId",
+		"mapDiscordNameToCordID",
+		"mapDiscordIdExists",
+		"mapWebUserIdToPlayer",
+		"mapBatchesOfCreatedRoles"}
+
+	for _, name := range filenames {
+		if _, err := os.Stat(name); err == nil {
+			load_data(&name, "name")
+		} else {
+			checkError(err) // file may or may not exist. See err for details.
+		}
+	}
 }
 
 func main() {
@@ -1200,12 +1243,15 @@ func main() {
 	TOKEN := os.Args[1] // discord API Token
 
 	// Open file for match report logging
-	f, err := os.OpenFile("index.html", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+	logfile, err := os.OpenFile("log.html", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
 	if err != nil {
-		log.Fatalf("Error opening log file: %v", err)
+		checkError(err)
 	}
-	defer f.Close() //close file when main exits
-	log.SetOutput(f)
+	defer logfile.Close() //close file when main exits
+	log.SetOutput(logfile)
+
+	// Load persistent data into memory
+	load_persistent_internal_data_structures()
 
 	// Initiate discord session through the discord API
 	dg, err := discordgo.New("Bot " + TOKEN)
@@ -1231,19 +1277,6 @@ func main() {
 	##### */
 	// .. ..
 	//##### End of Testing
-
-	// if data of previously created roles exists on disk load it into memory
-	if _, err := os.Stat("./batchCreatedRoles"); err == nil {
-		load_data(&batchCreatedRoles, "batchCreatedRoles")
-	} else {
-		checkError(err) // file may or may not exist. See err for details.
-	}
-
-	//	store_data(important, "./important")
-	//var loaded_phrase string
-	//	loaded_phrase := make(map[string]string)
-	load_data(&batchCreatedRoles, "./batchCreatedRoles")
-	fmt.Println(batchCreatedRoles)
 
 	/* Shutdown procedures
 	##### */

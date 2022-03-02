@@ -11,15 +11,10 @@ automating away tedious administrative tasks.
 - Requires Correct spreadsheet ID, valid Google API Token and correct discord role and server IDs .
 2. `/deleteroles`  
 - Delete previously created roles in batches (interactively prompts to select batch of roles to delete).
-3. Semi-Automatic match reporting  
-- Scans messages in preseason-reporting-week2 channel, performs data validation, and appends match reports to local log on disc.
+3. **Match report loging**
+- Scans messages in preseason-reporting-week2 channel, performs data validation, and appends match reports to log.html on disc.
 
 ## WIP/Roadmap/Planned features
-1. Associate username with discord_ID and save to Google Sheets
-1. Track user name changes and update Google Sheets with new name
-
-## Usage:
-```bash
-./Starbot bot_authorization_token_here
-```
-
+1. Scan users from players.json and associate discord username#identifier with snowflake id (immutable)
+1. Track user name changes and update internal data structures with past names 
+1. Expose API for adding new user (scan and save snowflake id) from WebApp
