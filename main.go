@@ -482,7 +482,7 @@ func update_roles(dg *discordgo.Session, m *discordgo.MessageCreate) {
 	// 3. Get desired state of roles from google sheets
 
 	// Read the secret file (google api key to access google sheets)
-	data, err := ioutil.ReadFile("secret.json")
+	data, err := ioutil.ReadFile("./data/secret.json")
 	checkError(err)
 	// Create oAuth client for google sheets
 	conf, err := google.JWTConfigFromJSON(data, sheets.SpreadsheetsScope)
@@ -1091,19 +1091,19 @@ func log_match_accepted(s string, accepted bool) {
 	}
 }
 
-// persist data structures on disc
+// persist data structures on disc in ./data (data folder must be present in directory)
 func store_data(data interface{}, filename string) {
 	buffer := new(bytes.Buffer)
 	encoder := gob.NewEncoder(buffer)
 	err := encoder.Encode(data)
 	checkError(err)
-	err = ioutil.WriteFile(filename, buffer.Bytes(), 0600)
+	err = ioutil.WriteFile("./data"+filename, buffer.Bytes(), 0600)
 	checkError(err)
 }
 
-// load data that was stored on disc
+// load data that was stored on disc in ./data (data folder must be present in directory)
 func load_data(data interface{}, filename string) {
-	raw, err := ioutil.ReadFile(filename)
+	raw, err := ioutil.ReadFile("./data" + filename)
 	checkError(err)
 	buffer := bytes.NewBuffer(raw)
 	dec := gob.NewDecoder(buffer)
