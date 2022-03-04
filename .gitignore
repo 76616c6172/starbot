@@ -3,8 +3,11 @@
 batchCreatedRoles
 players.json
 *secret*
+.secret.json
 keys*
 keys/*
 Starbot
 index.html
 batchCreatedRoles
+build_and_run_bot
+run_bot
