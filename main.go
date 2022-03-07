@@ -34,9 +34,9 @@ var AUTHORIZED_USERS = map[string]bool{
 
 // IMPORTANT HARDCODED VALUES:
 const SPREADSHEET_ID string = "1Xd0ohSMrYKsB-d0g3OgbovA3BV4NntQg_ZXjDJ7js8I" // CPL MASTER SPREADSHEET ID
-const SERVER_ID string = "426172214677602304"                                // CPL SERVER
+const DISCORD_SERVER_ID string = "426172214677602304"                        // CPL SERVER
 const MATCH_REPORTING_CHANNEL_ID string = "945736138864349234"               // CPL CHANNEL
-//const SERVER_ID string = "856762567414382632"                                // TEST SERVER
+//const DISCORD_SERVER_ID string = "856762567414382632"                                // TEST SERVER
 //const MATCH_REPORTING_CHANNEL_ID string = "945364478973861898"               // TEST CHANNEL
 //const SPREADSHEET_ID string = "1K-jV6-CUmjOSPW338MS8gXAYtYNW9qdMeB7XMEiQyn0" // TEST TEST SHEEET ID
 
@@ -266,7 +266,7 @@ func scan_message(s *discordgo.Session, m *discordgo.MessageCreate) {
 			return
 		}
 
-	case "/get_server_id": // Prints the ID of the discord server
+	case "/get_DISCORD_SERVER_ID": // Prints the ID of the discord server
 		_, err := s.ChannelMessageSend(m.ChannelID, m.GuildID)
 		if err != nil {
 			fmt.Println(err)
@@ -453,7 +453,7 @@ func deleteroles(s *discordgo.Session, m *discordgo.MessageCreate, batchName str
 // Check google sheet and assign roles automatically (create new team roles as needed)
 func update_roles(dg *discordgo.Session, m *discordgo.MessageCreate) {
 	// 0. Get all the roles from the discord and make a map
-	discordRoles, err := dg.GuildRoles(SERVER_ID)
+	discordRoles, err := dg.GuildRoles(DISCORD_SERVER_ID)
 	checkError(err)
 	roles_m := make(map[string]*discordgo.Role)
 	for _, b := range discordRoles {
@@ -461,7 +461,7 @@ func update_roles(dg *discordgo.Session, m *discordgo.MessageCreate) {
 	}
 
 	// 1. Get all the users in the discord
-	discordUsers, err := dg.GuildMembers(SERVER_ID, "", 1000)
+	discordUsers, err := dg.GuildMembers(DISCORD_SERVER_ID, "", 1000)
 	checkError(err)
 
 	// 2. Create map of username#discriminator to discord_id
@@ -690,29 +690,29 @@ func update_roles(dg *discordgo.Session, m *discordgo.MessageCreate) {
 		case PLAYER:
 			group_name = "Player"
 			// don't try to assign player role since we don't have it anymore
-			//err := dg.GuildMemberRoleAdd(SERVER_ID, cordUserid, PLAYER_ROLE_ID)
+			//err := dg.GuildMemberRoleAdd(DISCORD_SERVER_ID, cordUserid, PLAYER_ROLE_ID)
 			//checkError(err)
-			err = dg.GuildMemberRoleRemove(SERVER_ID, cordUserid, COACH_ROLE_ID)
+			err = dg.GuildMemberRoleRemove(DISCORD_SERVER_ID, cordUserid, COACH_ROLE_ID)
 			checkError(err)
-			err = dg.GuildMemberRoleRemove(SERVER_ID, cordUserid, ASST_COACH_ROLE_ID)
+			err = dg.GuildMemberRoleRemove(DISCORD_SERVER_ID, cordUserid, ASST_COACH_ROLE_ID)
 			checkError(err)
 			didAssignGroupRole = true
 		case COACHES:
 			group_name = "Coach"
-			err := dg.GuildMemberRoleAdd(SERVER_ID, cordUserid, COACH_ROLE_ID)
+			err := dg.GuildMemberRoleAdd(DISCORD_SERVER_ID, cordUserid, COACH_ROLE_ID)
 			checkError(err)
-			//err = dg.GuildMemberRoleRemove(SERVER_ID, cordUserid, PLAYER_ROLE_ID) //no longer needed
+			//err = dg.GuildMemberRoleRemove(DISCORD_SERVER_ID, cordUserid, PLAYER_ROLE_ID) //no longer needed
 			//checkError(err)
-			err = dg.GuildMemberRoleRemove(SERVER_ID, cordUserid, ASST_COACH_ROLE_ID)
+			err = dg.GuildMemberRoleRemove(DISCORD_SERVER_ID, cordUserid, ASST_COACH_ROLE_ID)
 			checkError(err)
 			didAssignGroupRole = true
 		case ASSISTANTCOACH:
 			group_name = "Assistant Coach"
-			err := dg.GuildMemberRoleAdd(SERVER_ID, cordUserid, ASST_COACH_ROLE_ID)
+			err := dg.GuildMemberRoleAdd(DISCORD_SERVER_ID, cordUserid, ASST_COACH_ROLE_ID)
 			checkError(err)
-			//err = dg.GuildMemberRoleRemove(SERVER_ID, cordUserid, PLAYER_ROLE_ID) //no longer needed
+			//err = dg.GuildMemberRoleRemove(DISCORD_SERVER_ID, cordUserid, PLAYER_ROLE_ID) //no longer needed
 			//checkError(err)
-			err = dg.GuildMemberRoleRemove(SERVER_ID, cordUserid, COACH_ROLE_ID)
+			err = dg.GuildMemberRoleRemove(DISCORD_SERVER_ID, cordUserid, COACH_ROLE_ID)
 			checkError(err)
 			didAssignGroupRole = true
 		}
@@ -731,31 +731,31 @@ func update_roles(dg *discordgo.Session, m *discordgo.MessageCreate) {
 		switch wishRace {
 		case "Zerg":
 			race_name = "Zerg"
-			err := dg.GuildMemberRoleAdd(SERVER_ID, cordUserid, ZERG_ROLE_ID)
+			err := dg.GuildMemberRoleAdd(DISCORD_SERVER_ID, cordUserid, ZERG_ROLE_ID)
 			checkError(err)
-			err = dg.GuildMemberRoleRemove(SERVER_ID, cordUserid, TERRAN_ROLE_ID)
+			err = dg.GuildMemberRoleRemove(DISCORD_SERVER_ID, cordUserid, TERRAN_ROLE_ID)
 			checkError(err)
-			err = dg.GuildMemberRoleRemove(SERVER_ID, cordUserid, PROTOSS_ROLE_ID)
+			err = dg.GuildMemberRoleRemove(DISCORD_SERVER_ID, cordUserid, PROTOSS_ROLE_ID)
 			checkError(err)
 			didAssignRaceRole = true
 
 		case "Terran":
 			race_name = "Terran"
-			err := dg.GuildMemberRoleAdd(SERVER_ID, cordUserid, TERRAN_ROLE_ID)
+			err := dg.GuildMemberRoleAdd(DISCORD_SERVER_ID, cordUserid, TERRAN_ROLE_ID)
 			checkError(err)
-			err = dg.GuildMemberRoleRemove(SERVER_ID, cordUserid, PROTOSS_ROLE_ID)
+			err = dg.GuildMemberRoleRemove(DISCORD_SERVER_ID, cordUserid, PROTOSS_ROLE_ID)
 			checkError(err)
-			err = dg.GuildMemberRoleRemove(SERVER_ID, cordUserid, ZERG_ROLE_ID)
+			err = dg.GuildMemberRoleRemove(DISCORD_SERVER_ID, cordUserid, ZERG_ROLE_ID)
 			checkError(err)
 			didAssignRaceRole = true
 
 		case "Protoss":
 			race_name = "Protoss"
-			err := dg.GuildMemberRoleAdd(SERVER_ID, cordUserid, PROTOSS_ROLE_ID)
+			err := dg.GuildMemberRoleAdd(DISCORD_SERVER_ID, cordUserid, PROTOSS_ROLE_ID)
 			checkError(err)
-			err = dg.GuildMemberRoleRemove(SERVER_ID, cordUserid, TERRAN_ROLE_ID)
+			err = dg.GuildMemberRoleRemove(DISCORD_SERVER_ID, cordUserid, TERRAN_ROLE_ID)
 			checkError(err)
-			err = dg.GuildMemberRoleRemove(SERVER_ID, cordUserid, ZERG_ROLE_ID)
+			err = dg.GuildMemberRoleRemove(DISCORD_SERVER_ID, cordUserid, ZERG_ROLE_ID)
 			checkError(err)
 			didAssignRaceRole = true
 
@@ -774,38 +774,38 @@ func update_roles(dg *discordgo.Session, m *discordgo.MessageCreate) {
 		switch wishTier {
 		case TIER0:
 			tier_name = "Tier 0"
-			err := dg.GuildMemberRoleAdd(SERVER_ID, cordUserid, TIER0_ROLE_ID)
+			err := dg.GuildMemberRoleAdd(DISCORD_SERVER_ID, cordUserid, TIER0_ROLE_ID)
 			checkError(err)
-			err = dg.GuildMemberRoleRemove(SERVER_ID, cordUserid, TIER1_ROLE_ID)
+			err = dg.GuildMemberRoleRemove(DISCORD_SERVER_ID, cordUserid, TIER1_ROLE_ID)
 			checkError(err)
-			err = dg.GuildMemberRoleRemove(SERVER_ID, cordUserid, TIER3_ROLE_ID)
+			err = dg.GuildMemberRoleRemove(DISCORD_SERVER_ID, cordUserid, TIER3_ROLE_ID)
 			checkError(err)
 			didAssignTier = true
 		case TIER1:
 			tier_name = "Tier 1"
-			err := dg.GuildMemberRoleAdd(SERVER_ID, cordUserid, TIER1_ROLE_ID)
+			err := dg.GuildMemberRoleAdd(DISCORD_SERVER_ID, cordUserid, TIER1_ROLE_ID)
 			checkError(err)
-			err = dg.GuildMemberRoleRemove(SERVER_ID, cordUserid, TIER0_ROLE_ID)
+			err = dg.GuildMemberRoleRemove(DISCORD_SERVER_ID, cordUserid, TIER0_ROLE_ID)
 			checkError(err)
-			err = dg.GuildMemberRoleRemove(SERVER_ID, cordUserid, TIER3_ROLE_ID)
+			err = dg.GuildMemberRoleRemove(DISCORD_SERVER_ID, cordUserid, TIER3_ROLE_ID)
 			checkError(err)
 			didAssignTier = true
 		case TIER2:
 			tier_name = "Tier 2"
-			err := dg.GuildMemberRoleAdd(SERVER_ID, cordUserid, TIER2_ROLE_ID)
+			err := dg.GuildMemberRoleAdd(DISCORD_SERVER_ID, cordUserid, TIER2_ROLE_ID)
 			checkError(err)
-			err = dg.GuildMemberRoleRemove(SERVER_ID, cordUserid, TIER1_ROLE_ID)
+			err = dg.GuildMemberRoleRemove(DISCORD_SERVER_ID, cordUserid, TIER1_ROLE_ID)
 			checkError(err)
-			err = dg.GuildMemberRoleRemove(SERVER_ID, cordUserid, TIER3_ROLE_ID)
+			err = dg.GuildMemberRoleRemove(DISCORD_SERVER_ID, cordUserid, TIER3_ROLE_ID)
 			checkError(err)
 			didAssignTier = true
 		case TIER3:
 			tier_name = "Tier 3"
-			err := dg.GuildMemberRoleAdd(SERVER_ID, cordUserid, TIER3_ROLE_ID)
+			err := dg.GuildMemberRoleAdd(DISCORD_SERVER_ID, cordUserid, TIER3_ROLE_ID)
 			checkError(err)
-			err = dg.GuildMemberRoleRemove(SERVER_ID, cordUserid, TIER1_ROLE_ID)
+			err = dg.GuildMemberRoleRemove(DISCORD_SERVER_ID, cordUserid, TIER1_ROLE_ID)
 			checkError(err)
-			err = dg.GuildMemberRoleRemove(SERVER_ID, cordUserid, TIER2_ROLE_ID)
+			err = dg.GuildMemberRoleRemove(DISCORD_SERVER_ID, cordUserid, TIER2_ROLE_ID)
 			checkError(err)
 			didAssignTier = true
 		}
@@ -902,7 +902,7 @@ func update_roles(dg *discordgo.Session, m *discordgo.MessageCreate) {
 				assignment[1] = team_id.ID
 				newlyAssignedRoles = append(newlyAssignedRoles, assignment)
 				// send discord message about the role assignment
-				cordUser, err := dg.GuildMember(SERVER_ID, id)
+				cordUser, err := dg.GuildMember(DISCORD_SERVER_ID, id)
 				checkError(err)
 				cordMessage := fmt.Sprintf("> Assigned %s to %s\n", cordUser.Mention(), roles_m[team].Mention())
 				_, err = dg.ChannelMessageSend(m.ChannelID, cordMessage)
@@ -1117,13 +1117,13 @@ func scan_web_players(s *discordgo.Session, m *discordgo.MessageCreate) {
 	var missing int
 	var misspelled int
 	// 1. Get all the users in the discord
-	discordUsers, err := s.GuildMembers(SERVER_ID, "", 1000)
+	discordUsers, err := s.GuildMembers(DISCORD_SERVER_ID, "", 1000)
 	checkError(err)
 
 	// TODO: we should check to make sure we automatically always send the right requests
 	// Since the server has more than 1k members we have to request 2 batches of 1000 each
 	lasti := len(discordUsers) - 1 //index of last mmember in slice
-	discordUsers2, err := s.GuildMembers(SERVER_ID, discordUsers[lasti].User.ID, 1000)
+	discordUsers2, err := s.GuildMembers(DISCORD_SERVER_ID, discordUsers[lasti].User.ID, 1000)
 	checkError(err)
 
 	//combine both into mega slice
