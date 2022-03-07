@@ -36,8 +36,11 @@ var AUTHORIZED_USERS = map[string]bool{
 //const SPREADSHEET_ID string = "1Xd0ohSMrYKsB-d0g3OgbovA3BV4NntQg_ZXjDJ7js8I" // CPL MASTER SPREADSHEET ID
 //const DISCORD_SERVER_ID string = "426172214677602304"                        // CPL SERVER
 //const MATCH_REPORTING_CHANNEL_ID string = "945736138864349234"               // CPL CHANNEL
-const DISCORD_SERVER_ID string = "856762567414382632"                        // TEST SERVER
-const MATCH_REPORTING_CHANNEL_ID string = "945364478973861898"               // TEST CHANNEL
+//const CPL_CLIPS_CHANNEL_ID string = "868530162852057139" //CPL CLIPS CHANNEL
+const CPL_CLIPS_CHANNEL_ID string = "945364478973861898" //test server CLIPS CHANNEL
+
+const DISCORD_SERVER_ID string = "856762567414382632"                        // TEST SERVER ID
+const MATCH_REPORTING_CHANNEL_ID string = "945364478973861898"               // TEST CHANNEL ID
 const SPREADSHEET_ID string = "1K-jV6-CUmjOSPW338MS8gXAYtYNW9qdMeB7XMEiQyn0" // TEST TEST SHEEET ID
 
 const ZERG_ROLE_ID string = "941808009984737281"
@@ -198,19 +201,25 @@ func scan_message(s *discordgo.Session, m *discordgo.MessageCreate) {
 		return
 	}
 
-	if m.ChannelID == MATCH_REPORTING_CHANNEL_ID {
-		if m.ChannelID == MATCH_REPORTING_CHANNEL_ID {
+	// Monitor messages from certain channels
+	switch m.ChannelID {
+	/*
+		case MATCH_REPORTING_CHANNEL_ID:
 			log_message(m.Content) //log everything
-		}
-		user_message := m.Content
-		if strings.Contains(user_message, ": ") {
-			return_message := parse_match_result(user_message, s, m)
-			_, err := s.ChannelMessageSend(m.ChannelID, return_message)
-			checkError(err)
-		}
+			if strings.Contains(m.Content, ": ") {
+				return_message := parse_match_result(m.Content, s, m)
+				_, err := s.ChannelMessageSend(m.ChannelID, return_message)
+				checkError(err)
+			}
+	*/
+	case CPL_CLIPS_CHANNEL_ID:
+		parse_message_in_clips_channel(s, m)
+
 	}
 
-	// Trigger on interactive command:w
+	// Log messages from match reporting channel
+
+	// Trigger on interactive command
 	if dangerousCommands.isInUse && m.Author.ID == dangerousCommands.AuthorID && AUTHORIZED_USERS[m.Author.ID] {
 		switch dangerousCommands.cmdName {
 
@@ -266,10 +275,17 @@ func scan_message(s *discordgo.Session, m *discordgo.MessageCreate) {
 			return
 		}
 
-	case "/get_DISCORD_SERVER_ID": // Prints the ID of the discord server
+	case "/get_discord_server_id": // Prints the ID of the discord server
 		_, err := s.ChannelMessageSend(m.ChannelID, m.GuildID)
 		if err != nil {
 			fmt.Println(err)
+		}
+
+	case "/parse_past_messages":
+		if AUTHORIZED_USERS[m.Author.ID] {
+			parse_past_messages(s, m)
+			_, err := s.ChannelMessageSend(m.ChannelID, "/parse_past_messages complete\n")
+			checkError(err)
 		}
 
 	case "/unassignroles": //not implemented yet
@@ -1228,6 +1244,26 @@ func load_persistent_internal_data_structures() {
 		} else {
 			checkError(err) // file may or may not exist. See err for details.
 		}
+	}
+}
+
+// Parse past messages from channel this func is called
+func parse_past_messages(s *discordgo.Session, m *discordgo.MessageCreate) {
+	messagesFromChannel, err := s.ChannelMessages(m.ChannelID, 100, "", "", "")
+	checkError(err)
+
+	for _, message := range messagesFromChannel {
+		if strings.Contains(message.Content, "twitch.tv") {
+			log.Println("[CPL-CLIPS] " + message.Content + " <br>")
+		}
+	}
+
+}
+
+// Log messages from the clips channel that contain "twitch.tv"
+func parse_message_in_clips_channel(s *discordgo.Session, m *discordgo.MessageCreate) {
+	if strings.Contains(m.Content, "twitch.tv") {
+		log.Println("[CPL-CLIPS] " + m.Content + " <br>")
 	}
 }
 
