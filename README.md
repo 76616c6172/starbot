@@ -11,8 +11,12 @@ automating away tedious administrative tasks.
 - Requires Correct spreadsheet ID, valid Google API Token and correct discord role and server IDs .
 2. `/deleteroles`  
 - Delete previously created roles in batches (interactively prompts to select batch of roles to delete).
-3. **Match report loging**
-- Scans messages in preseason-reporting-week2 channel, performs data validation, and appends match reports to log.html on disc.
+3. **Match report logging**
+- Scans messages in preseason-reporting-week2 channel, performs data
+  validation, and appends match reports to web viewable log.
+4. **Twitch Clip logging**
+- Scans messages in cpl-clips channel, and appends messages containing a
+  twitch url to web viewable log.
 
 ## WIP/Roadmap/Planned features
 1. Scan users from players.json and associate discord username#identifier with snowflake id (immutable)
