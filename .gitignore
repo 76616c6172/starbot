@@ -1,5 +1,6 @@
 *.sh
 *.html
+data
 batchCreatedRoles
 players.json
 *secret*
