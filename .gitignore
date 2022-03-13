@@ -5,6 +5,7 @@ batchCreatedRoles
 players.json
 *secret*
 .secret.json
+output.out
 data
 keys*
 keys/*
