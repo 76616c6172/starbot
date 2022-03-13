@@ -1161,7 +1161,7 @@ func scan_web_players(s *discordgo.Session, m *discordgo.MessageCreate) {
 	}
 
 	// ioutil deprecated but still works (io wrappers)
-	data_from_players_file, err := ioutil.ReadFile("./players.json")
+	data_from_players_file, err := ioutil.ReadFile("./data/players.json")
 	if err != nil {
 		fmt.Println("error: ", err)
 		return
@@ -1193,7 +1193,7 @@ func scan_web_players(s *discordgo.Session, m *discordgo.MessageCreate) {
 			found++
 			player.Discord_id = id
 			mapWebUserIdToPlayer[webId] = player //write the new data to the map
-			_, err := s.ChannelMessageSend(m.ChannelID, "> Found user: "+player.DiscordName+" with snowflake id:"+id)
+			//_, err := s.ChannelMessageSend(m.ChannelID, "> Found user: "+player.DiscordName+" with snowflake id:"+id)
 			checkError(err)
 		} else {
 			//Check forcommon capitalization mistake on first letter
@@ -1217,6 +1217,8 @@ func scan_web_players(s *discordgo.Session, m *discordgo.MessageCreate) {
 				checkError(err)
 			}
 		}
+		test_assignment_from_web(s, m)
+		return //DEBUG, stop here for now
 	}
 
 	// find Dada
@@ -1276,6 +1278,110 @@ func parse_message_in_clips_channel(s *discordgo.Session, m *discordgo.MessageCr
 	if strings.Contains(m.Content, "twitch.tv") {
 		log.Println("[CPL-CLIPS] " + m.Content + " <br>")
 	}
+}
+
+// Assigns/creates roles based on entry on web
+func test_assignment_from_web(s *discordgo.Session, m *discordgo.MessageCreate) {
+	/* key = meaning */
+	const PROTOSS int = 6
+	const ZERG int = 7
+	const TERRAN int = 8
+	const DECLARED_WEEKLY int = 9
+	const RACE_PICKER int = 10
+	const TEAM_ADMIN int = 7
+	const CASTER int = 8
+	const LIQUIPEDIA_UPDATES int = 9
+	const GRAPHICS int = 10
+	const DEV int = 11
+	const OTHER int = 12
+	//helper roles
+	const PLAYER int = 4
+	const COACH int = 5
+	const ASSISTANT_COACH int = 6
+
+	/*
+			assign:
+		Team
+		Tier
+		Race"
+	*/
+
+	for _, usr := range mapWebUserIdToPlayer {
+
+		switch usr.Team {
+		case "Team 1":
+			fmt.Println("assign", usr.DiscordName, "to Team 1")
+
+		case "Team 2":
+			fmt.Println("assign", usr.DiscordName, "to Team 2")
+
+		case "Team 3":
+			fmt.Println("assign", usr.DiscordName, "to Team 3")
+
+		case "Team 4":
+			fmt.Println("assign", usr.DiscordName, "to Team 4")
+
+		case "Team 5":
+			fmt.Println("assign", usr.DiscordName, "to Team 5")
+
+		case "Team 6":
+			fmt.Println("assign", usr.DiscordName, "to Team 6")
+
+		default:
+			fmt.Println("error", usr.DiscordName, "- no team found")
+
+		}
+
+		switch usr.Race { // Assign Race
+		case PROTOSS:
+			fmt.Println("assign", usr.DiscordName, "to Protoss")
+
+		case ZERG:
+			fmt.Println("assign", usr.DiscordName, "to Zerg")
+
+		case TERRAN:
+			fmt.Println("assign", usr.DiscordName, "to Terran")
+
+		case DECLARED_WEEKLY:
+			// idk what to do here, maybe nothing?
+
+		case RACE_PICKER:
+
+		default:
+			fmt.Println("error", usr.DiscordName, "- no race found")
+		}
+
+		switch usr.Tier { // Assign Tier
+		case 0:
+			fmt.Println("assign", usr.DiscordName, "to Tier0")
+
+		case 1:
+			fmt.Println("assign", usr.DiscordName, "to Tier1")
+
+		case 2:
+			fmt.Println("assign", usr.DiscordName, "to Tier2")
+
+		case 3:
+			fmt.Println("assign", usr.DiscordName, "to Tier3")
+
+		default:
+			fmt.Println("error", usr.DiscordName, "- no Tier found")
+		}
+
+		for _, role := range usr.Helper_role {
+			switch role { // Assign Coach/Assistant Coach/Player
+			case PLAYER:
+				fmt.Println("assign", usr.DiscordName, "to Player")
+			case COACH:
+				fmt.Println("assign", usr.DiscordName, "to Coach")
+			case ASSISTANT_COACH:
+				fmt.Println("assign", usr.DiscordName, "to Assistant Coach")
+			default:
+				fmt.Println("error", usr.DiscordName, "- no helper role ")
+			}
+		}
+	}
+
 }
 
 func main() {
