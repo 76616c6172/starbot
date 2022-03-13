@@ -190,6 +190,7 @@ var mapBatchesOfCreatedRoles = map[string][]team_t{} //[batchName]{roleid, rolei
 
 var mapWebUserNameToWebUserId = map[string]int{}  // map of WebApp username to numerical WebApp user ID
 var mapWebUserIdToPlayer = map[int]web_player_t{} //this is the main map I want to use
+var discordUsers = []*discordgo.Member{}          //map of all users from discord
 
 //##### End of global vars
 
@@ -506,7 +507,7 @@ func update_roles(dg *discordgo.Session, m *discordgo.MessageCreate) {
 	// 3. Get desired state of roles from google sheets
 
 	// Read the secret file (google api key to access google sheets)
-	data, err := ioutil.ReadFile("./data/secret.json")
+	data, err := ioutil.ReadFile("./keys/secret.json")
 	checkError(err)
 	// Create oAuth client for google sheets
 	conf, err := google.JWTConfigFromJSON(data, sheets.SpreadsheetsScope)
@@ -1229,7 +1230,8 @@ func scan_web_players(s *discordgo.Session, m *discordgo.MessageCreate) {
 	_, err = s.ChannelMessageSend(m.ChannelID, message)
 	checkError(err)
 
-	// store updated maps
+	// store updated maps and discordusers
+	store_data(discordUsers, "discordUsers")
 	store_data(mapWebUserNameToWebUserId, "mapWebUserNameToWebUserId")
 	store_data(mapWebUserNameToWebUserId, "mapWebUserNameToWebUserId")
 	store_data(mapDiscordNameToCordID, "mapDiscordNameToCordID")
@@ -1239,7 +1241,8 @@ func scan_web_players(s *discordgo.Session, m *discordgo.MessageCreate) {
 
 // Load persistent data into memory
 func load_persistent_internal_data_structures() {
-	var filenames = [6]string{"mapWebUserNameToWebUserId",
+	var filenames = [7]string{"discordUsers",
+		"mapWebUserNameToWebUserId",
 		"mapWebUserNameToWebUserId",
 		"mapDiscordNameToCordID",
 		"mapDiscordIdExists",

@@ -5,7 +5,7 @@ batchCreatedRoles
 players.json
 *secret*
 .secret.json
-./data*
+data
 keys*
 keys/*
 Starbot
