@@ -28,7 +28,8 @@ The values here all need to be set correctly for all functionality to work!
 
 // Hardcode all IDs that are allowed to use potentially dangerous administrative actions, such as /assignroles
 var AUTHORIZED_USERS = map[string]bool{
-	"96492516966174720": true,  //valar
+	"96492516966174720": true, //valar
+
 	"93204976779694080": false, //Pete aka Pusagi
 }
 
@@ -46,6 +47,13 @@ const TIER2_ROLE_ID string = "486932586724065285"
 const TIER3_ROLE_ID string = "486932645519818752"
 const COACH_ROLE_ID string = "426370872740413440"
 const ASST_COACH_ROLE_ID string = "514179771295334420"
+
+const TEAM1_ROLE_ID string = "952362058282836079"
+const TEAM2_ROLE_ID string = "952363361360810015"
+const TEAM3_ROLE_ID string = "952363465299853373"
+const TEAM4_ROLE_ID string = "952363498233536533"
+const TEAM5_ROLE_ID string = "952363548166750259"
+const TEAM6_ROLE_ID string = "952363607616794624"
 
 // TEST SERVER VALUESL (TESTING BRANCH)
 //const CPL_CLIPS_CHANNEL_ID string = "945364478973861898"                     // TEst SERVER CLIPS CHANNEL
@@ -80,12 +88,13 @@ const NEON_GREEN int = 2358021
 
 // help cmd text (DONT write longer lines than this, this is the maximum that still looks good on mobile)
 const AVAILABLE_COMMANDS string = `
-[ /help         - show commands                       ]
-[ /test         - test command                        ]
+[ /help           - show commands                     ]
+[ /test           - test command                      ]
 [                                                     ]
-[ /scan_users   - identify users based on web account ]
-[ /assignroles  - create and assign roles             ]
-[ /deleteroles  - delete previously created roles     ]
+[ /scan_users     - identify users based on web info  ]
+[ /assignroles    - assign roles based on players json]
+[ /webassignroles - create and assign roles from sheet]
+[ /deleteroles    - delete previously created roles   ]
 `
 
 const MATCH_REPORT_FORMAT_HELP_TEXT string = "G2: player_name 1-0 player_two\n```"
@@ -263,6 +272,21 @@ func scan_message(s *discordgo.Session, m *discordgo.MessageCreate) {
 			checkError(err)
 		}
 
+	case "/assignroles":
+		if !AUTHORIZED_USERS[m.Author.ID] { // Check for Authorization
+			_, err := s.ChannelMessageSend(m.ChannelID, DIFF_MSG_START+"- /assignroles ERROR: "+m.Author.Username+" IS NOT AUTHORIZED"+DIFF_MSG_END)
+			checkError(err)
+			return
+		}
+		if dangerousCommands.isInUse {
+			_, err := s.ChannelMessageSend(m.ChannelID, DIFF_MSG_START+"- /assignroles ERROR: Dangerous command is in use\n"+DIFF_MSG_END)
+			checkError(err)
+			return
+		}
+		_, err := s.ChannelMessageSend(m.ChannelID, FIX_MSG_START+"+ /assignroles ROLE ASSIGNMENT STARTED"+FIX_MSG_END)
+		checkError(err)
+		assign_roles_from_json(s, m)
+
 	case "/deleteroles":
 		if !AUTHORIZED_USERS[m.Author.ID] { // Check for Authorization
 			_, err := s.ChannelMessageSend(m.ChannelID, DIFF_MSG_START+"- /deleteroles ERROR: "+m.Author.Username+" IS NOT AUTHORIZED"+DIFF_MSG_END)
@@ -301,16 +325,16 @@ func scan_message(s *discordgo.Session, m *discordgo.MessageCreate) {
 		_, err := s.ChannelMessageSend(m.ChannelID, "/unassignroles is not implemented yet")
 		checkError(err)
 
-	case "/assignroles":
+	case "/webassignroles":
 		if dangerousCommands.isInUse { //check if this command is in use first and disallow simultanious use
-			_, err := s.ChannelMessageSend(m.ChannelID, DIFF_MSG_START+"- /assignroles ERROR: EXECUTION IN PROGRESS"+DIFF_MSG_END)
+			_, err := s.ChannelMessageSend(m.ChannelID, DIFF_MSG_START+"- /webassignroles ERROR: EXECUTION IN PROGRESS"+DIFF_MSG_END)
 			if err != nil {
 				fmt.Println(err)
 			}
 			return
 		}
 		if AUTHORIZED_USERS[m.Author.ID] { // if the user is authorized, proceed with the operation
-			_, err := s.ChannelMessageSend(m.ChannelID, FIX_MSG_START+"+ /assignroles ROLE UPDATE STARTED"+FIX_MSG_END)
+			_, err := s.ChannelMessageSend(m.ChannelID, FIX_MSG_START+"+ /webassignroles ROLE UPDATE STARTED"+FIX_MSG_END)
 			if err != nil {
 				fmt.Println(err)
 				return
@@ -322,7 +346,7 @@ func scan_message(s *discordgo.Session, m *discordgo.MessageCreate) {
 			dangerousCommands.cmdName = "/assignroles"
 			update_roles(s, m)                //testing new command
 			dangerousCommands.isInUse = false //reset the data so /assignroles can be used again
-			_, err = s.ChannelMessageSend(m.ChannelID, DIFF_MSG_START+"+ /assignroles ROLE UPDATE COMPLETE"+DIFF_MSG_END)
+			_, err = s.ChannelMessageSend(m.ChannelID, DIFF_MSG_START+"+ /webassignroles ROLE UPDATE COMPLETE"+DIFF_MSG_END)
 			if err != nil {
 				fmt.Println(err)
 				return
@@ -331,7 +355,7 @@ func scan_message(s *discordgo.Session, m *discordgo.MessageCreate) {
 			return
 
 		} else {
-			_, err := s.ChannelMessageSend(m.ChannelID, DIFF_MSG_START+"- /assignroles ERROR: "+m.Author.Username+" IS NOT AUTHORIZED"+DIFF_MSG_END)
+			_, err := s.ChannelMessageSend(m.ChannelID, DIFF_MSG_START+"- /webassignroles ERROR: "+m.Author.Username+" IS NOT AUTHORIZED"+DIFF_MSG_END)
 			if err != nil {
 				fmt.Println(err)
 			}
@@ -1142,7 +1166,7 @@ func scan_web_players(s *discordgo.Session, m *discordgo.MessageCreate) {
 	var missing int
 	var misspelled int
 	// 1. Get all the users in the discord
-	discordUsers, err := s.GuildMembers(DISCORD_SERVER_ID, "", 1000)
+	discordUsers1, err := s.GuildMembers(DISCORD_SERVER_ID, "", 1000)
 	checkError(err)
 
 	// TODO: we should check to make sure we automatically always send the right requests
@@ -1152,6 +1176,7 @@ func scan_web_players(s *discordgo.Session, m *discordgo.MessageCreate) {
 	checkError(err)
 
 	//combine both into mega slice
+	discordUsers = append(discordUsers, discordUsers1...)
 	discordUsers = append(discordUsers, discordUsers2...)
 
 	// 2. Create map of username#discriminator to discord_id
@@ -1217,8 +1242,7 @@ func scan_web_players(s *discordgo.Session, m *discordgo.MessageCreate) {
 				checkError(err)
 			}
 		}
-		test_assignment_from_web(s, m)
-		return //DEBUG, stop here for now
+		reset_dangerous_commands_status()
 	}
 
 	// find Dada
@@ -1248,12 +1272,12 @@ func load_persistent_internal_data_structures() {
 		"mapWebUserNameToWebUserId",
 		"mapDiscordNameToCordID",
 		"mapDiscordIdExists",
-		"mapWebUserIdToPlayer",
+		"mapWebUserIdToPlayer", //this is the main important one
 		"mapBatchesOfCreatedRoles"}
 
 	for _, name := range filenames {
 		if _, err := os.Stat(name); err == nil {
-			load_data(&name, "name")
+			load_data(&name, "./data/"+name)
 		} else {
 			checkError(err) // file may or may not exist. See err for details.
 		}
@@ -1281,7 +1305,9 @@ func parse_message_in_clips_channel(s *discordgo.Session, m *discordgo.MessageCr
 }
 
 // Assigns/creates roles based on entry on web
-func test_assignment_from_web(s *discordgo.Session, m *discordgo.MessageCreate) {
+func assign_roles_from_json(s *discordgo.Session, m *discordgo.MessageCreate) {
+	dangerousCommands.isInUse = true
+	dangerousCommands.cmdName = "/assign_roles_from_json"
 	/* key = meaning */
 	const PROTOSS int = 6
 	const ZERG int = 7
@@ -1306,26 +1332,124 @@ func test_assignment_from_web(s *discordgo.Session, m *discordgo.MessageCreate) 
 		Race"
 	*/
 
+	//stats, count every time a role was assigned
+	var team1Count int
+	var team2Count int
+	var team3Count int
+	var team4Count int
+	var team5Count int
+	var team6Count int
+	var tier0Count int
+	var tier1Count int
+	var tier2Count int
+	var tier3Count int
+	var raceCount int
+	var coachCount int
+	var assisCoachCount int
+	var totalRoleAssignments int
+
 	for _, usr := range mapWebUserIdToPlayer {
 
 		switch usr.Team {
 		case "Team 1":
 			fmt.Println("assign", usr.DiscordName, "to Team 1")
+			err := s.GuildMemberRoleAdd(DISCORD_SERVER_ID, usr.Discord_id, TEAM1_ROLE_ID)
+			checkError(err)
+			totalRoleAssignments++
+			team1Count++
+
+			if err == nil {
+				cordMessage := fmt.Sprintf("> Assigned <@%s> %s to %s\n", usr.Discord_id, usr.WebName, "Team 1")
+				//_, err = s.ChannelMessageSend(m.ChannelID, cordMessage)
+				fmt.Println(cordMessage)
+				checkError(err)
+			}
 
 		case "Team 2":
 			fmt.Println("assign", usr.DiscordName, "to Team 2")
+			err := s.GuildMemberRoleAdd(DISCORD_SERVER_ID, usr.Discord_id, TEAM2_ROLE_ID)
+			checkError(err)
+			totalRoleAssignments++
+			team2Count++
+
+			if err == nil {
+				cordMessage := fmt.Sprintf("> Assigned <@%s> %s to %s\n", usr.Discord_id, usr.WebName, "Team 2")
+				//_, err = s.ChannelMessageSend(m.ChannelID, cordMessage)
+				fmt.Println(cordMessage)
+				checkError(err)
+			} else {
+				_, err = s.ChannelMessageSend(m.ChannelID, "Couldn't assign team to"+usr.WebName+usr.DiscordName)
+				checkError(err)
+
+			}
 
 		case "Team 3":
 			fmt.Println("assign", usr.DiscordName, "to Team 3")
+			err := s.GuildMemberRoleAdd(DISCORD_SERVER_ID, usr.Discord_id, TEAM3_ROLE_ID)
+			checkError(err)
+			totalRoleAssignments++
+			team3Count++
+
+			if err == nil {
+				cordMessage := fmt.Sprintf("> Assigned <@%s> %s to %s\n", usr.Discord_id, usr.WebName, "Team 3")
+				//_, err = s.ChannelMessageSend(m.ChannelID, cordMessage)
+				checkError(err)
+				fmt.Println(cordMessage)
+			} else {
+				_, err = s.ChannelMessageSend(m.ChannelID, "Couldn't assign team to"+usr.WebName+usr.DiscordName)
+				checkError(err)
+			}
 
 		case "Team 4":
 			fmt.Println("assign", usr.DiscordName, "to Team 4")
+			err := s.GuildMemberRoleAdd(DISCORD_SERVER_ID, usr.Discord_id, TEAM4_ROLE_ID)
+			checkError(err)
+			totalRoleAssignments++
+			team4Count++
+
+			if err == nil {
+				cordMessage := fmt.Sprintf("> Assigned <@%s> %s to %s\n", usr.Discord_id, usr.WebName, "Team 4")
+				//_, err = s.ChannelMessageSend(m.ChannelID, cordMessage)
+				fmt.Println(cordMessage)
+				checkError(err)
+			} else {
+				_, err = s.ChannelMessageSend(m.ChannelID, "Couldn't assign team to"+usr.WebName+usr.DiscordName)
+				checkError(err)
+			}
 
 		case "Team 5":
 			fmt.Println("assign", usr.DiscordName, "to Team 5")
+			err := s.GuildMemberRoleAdd(DISCORD_SERVER_ID, usr.Discord_id, TEAM5_ROLE_ID)
+			checkError(err)
+			totalRoleAssignments++
+			team5Count++
+
+			if err == nil {
+				cordMessage := fmt.Sprintf("> Assigned <@%s> %s to %s\n", usr.Discord_id, usr.WebName, "Team 5")
+				//_, err = s.ChannelMessageSend(m.ChannelID, cordMessage)
+				checkError(err)
+				fmt.Println(cordMessage)
+			} else {
+				_, err = s.ChannelMessageSend(m.ChannelID, "Couldn't assign team to"+usr.WebName+usr.DiscordName)
+				checkError(err)
+			}
 
 		case "Team 6":
 			fmt.Println("assign", usr.DiscordName, "to Team 6")
+			err := s.GuildMemberRoleAdd(DISCORD_SERVER_ID, usr.Discord_id, TEAM6_ROLE_ID)
+			checkError(err)
+			totalRoleAssignments++
+			team6Count++
+
+			if err == nil {
+				cordMessage := fmt.Sprintf("> Assigned <@%s> %s to %s\n", usr.Discord_id, usr.WebName, "Team 6")
+				//_, err = s.ChannelMessageSend(m.ChannelID, cordMessage)
+				//checkError(err)
+				fmt.Println(cordMessage)
+			} else {
+				_, err = s.ChannelMessageSend(m.ChannelID, "Couldn't assign team to"+usr.WebName+usr.DiscordName)
+				checkError(err)
+			}
 
 		default:
 			fmt.Println("error", usr.DiscordName, "- no team found")
@@ -1335,12 +1459,36 @@ func test_assignment_from_web(s *discordgo.Session, m *discordgo.MessageCreate) 
 		switch usr.Race { // Assign Race
 		case PROTOSS:
 			fmt.Println("assign", usr.DiscordName, "to Protoss")
+			err := s.GuildMemberRoleAdd(DISCORD_SERVER_ID, usr.Discord_id, PROTOSS_ROLE_ID)
+			checkError(err)
+			err = s.GuildMemberRoleRemove(DISCORD_SERVER_ID, usr.Discord_id, TERRAN_ROLE_ID)
+			checkError(err)
+			err = s.GuildMemberRoleRemove(DISCORD_SERVER_ID, usr.Discord_id, ZERG_ROLE_ID)
+			checkError(err)
+			totalRoleAssignments++
+			raceCount++
 
 		case ZERG:
 			fmt.Println("assign", usr.DiscordName, "to Zerg")
+			err := s.GuildMemberRoleAdd(DISCORD_SERVER_ID, usr.Discord_id, ZERG_ROLE_ID)
+			checkError(err)
+			err = s.GuildMemberRoleRemove(DISCORD_SERVER_ID, usr.Discord_id, TERRAN_ROLE_ID)
+			checkError(err)
+			err = s.GuildMemberRoleRemove(DISCORD_SERVER_ID, usr.Discord_id, PROTOSS_ROLE_ID)
+			checkError(err)
+			totalRoleAssignments++
+			raceCount++
 
 		case TERRAN:
 			fmt.Println("assign", usr.DiscordName, "to Terran")
+			err := s.GuildMemberRoleAdd(DISCORD_SERVER_ID, usr.Discord_id, TERRAN_ROLE_ID)
+			checkError(err)
+			err = s.GuildMemberRoleRemove(DISCORD_SERVER_ID, usr.Discord_id, ZERG_ROLE_ID)
+			checkError(err)
+			err = s.GuildMemberRoleRemove(DISCORD_SERVER_ID, usr.Discord_id, PROTOSS_ROLE_ID)
+			checkError(err)
+			totalRoleAssignments++
+			raceCount++
 
 		case DECLARED_WEEKLY:
 			// idk what to do here, maybe nothing?
@@ -1352,17 +1500,91 @@ func test_assignment_from_web(s *discordgo.Session, m *discordgo.MessageCreate) 
 		}
 
 		switch usr.Tier { // Assign Tier
+		case 999:
+			fmt.Println("removed all tiers from", usr.DiscordName)
+			_ = s.GuildMemberRoleRemove(DISCORD_SERVER_ID, usr.Discord_id, TIER0_ROLE_ID)
+			_ = s.GuildMemberRoleRemove(DISCORD_SERVER_ID, usr.Discord_id, TIER1_ROLE_ID)
+			_ = s.GuildMemberRoleRemove(DISCORD_SERVER_ID, usr.Discord_id, TIER2_ROLE_ID)
+			_ = s.GuildMemberRoleRemove(DISCORD_SERVER_ID, usr.Discord_id, TIER3_ROLE_ID)
+			cordMessage := fmt.Sprintf("> Removed all tiers from <@%s> %s\n", usr.Discord_id, usr.WebName)
+			_, err := s.ChannelMessageSend(m.ChannelID, cordMessage)
+			checkError(err)
+
 		case 0:
 			fmt.Println("assign", usr.DiscordName, "to Tier0")
+			err := s.GuildMemberRoleAdd(DISCORD_SERVER_ID, usr.Discord_id, TIER0_ROLE_ID)
+			_ = s.GuildMemberRoleRemove(DISCORD_SERVER_ID, usr.Discord_id, TIER1_ROLE_ID)
+			_ = s.GuildMemberRoleRemove(DISCORD_SERVER_ID, usr.Discord_id, TIER2_ROLE_ID)
+			_ = s.GuildMemberRoleRemove(DISCORD_SERVER_ID, usr.Discord_id, TIER3_ROLE_ID)
+			totalRoleAssignments++
+			tier0Count++
+			checkError(err)
+			if err == nil {
+				cordMessage := fmt.Sprintf("> Assigned <@%s> %s to %s\n", usr.Discord_id, usr.WebName, "TIER 0")
+				//_, err = s.ChannelMessageSend(m.ChannelID, cordMessage)
+				//checkError(err)
+				fmt.Println(cordMessage)
+			} else {
+				_, err = s.ChannelMessageSend(m.ChannelID, "Couldn't assign tier to"+usr.WebName+usr.DiscordName)
+				checkError(err)
+			}
 
 		case 1:
 			fmt.Println("assign", usr.DiscordName, "to Tier1")
+			err := s.GuildMemberRoleAdd(DISCORD_SERVER_ID, usr.Discord_id, TIER1_ROLE_ID)
+			_ = s.GuildMemberRoleRemove(DISCORD_SERVER_ID, usr.Discord_id, TIER0_ROLE_ID)
+			_ = s.GuildMemberRoleRemove(DISCORD_SERVER_ID, usr.Discord_id, TIER2_ROLE_ID)
+			_ = s.GuildMemberRoleRemove(DISCORD_SERVER_ID, usr.Discord_id, TIER3_ROLE_ID)
+			totalRoleAssignments++
+			tier1Count++
+			checkError(err)
+			if err == nil {
+				cordMessage := fmt.Sprintf("> Assigned <@%s> %s to %s\n", usr.Discord_id, usr.WebName, "TIER 1")
+				//_, err = s.ChannelMessageSend(m.ChannelID, cordMessage)
+				//checkError(err)
+				fmt.Println(cordMessage)
+			} else {
+				_, err = s.ChannelMessageSend(m.ChannelID, "Couldn't assign tier to"+usr.WebName+usr.DiscordName)
+				checkError(err)
+			}
 
 		case 2:
 			fmt.Println("assign", usr.DiscordName, "to Tier2")
+			err := s.GuildMemberRoleAdd(DISCORD_SERVER_ID, usr.Discord_id, TIER2_ROLE_ID)
+			_ = s.GuildMemberRoleRemove(DISCORD_SERVER_ID, usr.Discord_id, TIER0_ROLE_ID)
+			_ = s.GuildMemberRoleRemove(DISCORD_SERVER_ID, usr.Discord_id, TIER1_ROLE_ID)
+			_ = s.GuildMemberRoleRemove(DISCORD_SERVER_ID, usr.Discord_id, TIER3_ROLE_ID)
+			totalRoleAssignments++
+			tier2Count++
+			checkError(err)
+			if err == nil {
+				cordMessage := fmt.Sprintf("> Assigned <@%s> %s to %s\n", usr.Discord_id, usr.WebName, "TIER 2")
+				//_, err = s.ChannelMessageSend(m.ChannelID, cordMessage)
+				//checkError(err)
+				fmt.Println(cordMessage)
+			} else {
+				_, err = s.ChannelMessageSend(m.ChannelID, "Couldn't assign tier to"+usr.WebName+usr.DiscordName)
+				checkError(err)
+			}
 
 		case 3:
 			fmt.Println("assign", usr.DiscordName, "to Tier3")
+			err := s.GuildMemberRoleAdd(DISCORD_SERVER_ID, usr.Discord_id, TIER3_ROLE_ID)
+			_ = s.GuildMemberRoleRemove(DISCORD_SERVER_ID, usr.Discord_id, TIER2_ROLE_ID)
+			_ = s.GuildMemberRoleRemove(DISCORD_SERVER_ID, usr.Discord_id, TIER1_ROLE_ID)
+			_ = s.GuildMemberRoleRemove(DISCORD_SERVER_ID, usr.Discord_id, TIER0_ROLE_ID)
+			checkError(err)
+			totalRoleAssignments++
+			tier3Count++
+			if err == nil {
+				cordMessage := fmt.Sprintf("> Assigned <@%s> %s to %s\n", usr.Discord_id, usr.WebName, "TIER 3")
+				//_, err = s.ChannelMessageSend(m.ChannelID, cordMessage)
+				//checkError(err)
+				fmt.Println(cordMessage)
+			} else {
+				_, err = s.ChannelMessageSend(m.ChannelID, "Couldn't assign tier to"+usr.WebName+usr.DiscordName)
+				checkError(err)
+			}
 
 		default:
 			fmt.Println("error", usr.DiscordName, "- no Tier found")
@@ -1374,14 +1596,48 @@ func test_assignment_from_web(s *discordgo.Session, m *discordgo.MessageCreate) 
 				fmt.Println("assign", usr.DiscordName, "to Player")
 			case COACH:
 				fmt.Println("assign", usr.DiscordName, "to Coach")
+				totalRoleAssignments++
+				coachCount++
+				err := s.GuildMemberRoleAdd(DISCORD_SERVER_ID, usr.Discord_id, COACH_ROLE_ID)
+				checkError(err)
+				if err == nil {
+					cordMessage := fmt.Sprintf("> Assigned <@%s> %s to %s\n", usr.Discord_id, usr.WebName, "COACH")
+					//_, err = s.ChannelMessageSend(m.ChannelID, cordMessage)
+					//checkError(err)
+					fmt.Println(cordMessage)
+				} else {
+					_, err = s.ChannelMessageSend(m.ChannelID, "Couldn't assign COACH to"+usr.WebName+usr.DiscordName)
+					checkError(err)
+				}
+
 			case ASSISTANT_COACH:
 				fmt.Println("assign", usr.DiscordName, "to Assistant Coach")
+				err := s.GuildMemberRoleAdd(DISCORD_SERVER_ID, usr.Discord_id, ASST_COACH_ROLE_ID)
+				totalRoleAssignments++
+				assisCoachCount++
+				checkError(err)
+				if err == nil {
+					cordMessage := fmt.Sprintf("> Assigned <@%s> %s to %s\n", usr.Discord_id, usr.WebName, "ASSISTANT COACH")
+					//_, err = s.ChannelMessageSend(m.ChannelID, cordMessage)
+					//checkError(err)
+					fmt.Println(cordMessage)
+				} else {
+					_, err = s.ChannelMessageSend(m.ChannelID, "Couldn't assign ASSISTANT COACH to"+usr.WebName+usr.DiscordName)
+					checkError(err)
+				}
 			default:
 				fmt.Println("error", usr.DiscordName, "- no helper role ")
 			}
 		}
 	}
-
+	message := DIFF_MSG_START
+	message += "+ /assignroles ROLE ASSIGNMENT COMPLETE\n"
+	totalUsrInTeams := team1Count + team2Count + team3Count + team4Count + team5Count + team6Count
+	message += fmt.Sprintf("**Users assigned to teams:** %d\n**Team 1:** %d\n**Team 2:** %d\n**Team 3:** %d\n**Team 4:** %d\n**Team 5:** %d\n**Team 6:** %d\n", totalUsrInTeams, team1Count, team2Count, team3Count, team4Count, team5Count, team6Count)
+	message += fmt.Sprintf("**Coaches assigned:** %d\n**Assistant Coaches assigned:** %d\n\n**Total roles assigned**: %d\n", coachCount, assisCoachCount, totalRoleAssignments)
+	message += DIFF_MSG_END
+	_, err := s.ChannelMessageSend(m.ChannelID, message)
+	checkError(err)
 }
 
 func main() {
