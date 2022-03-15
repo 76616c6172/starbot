@@ -27,26 +27,32 @@ The values here all need to be set correctly for all functionality to work!
 ##### */
 
 // Hardcode all IDs that are allowed to use potentially dangerous administrative actions, such as /assignroles
-var AUTHORIZED_USERS = map[string]bool{
+var IS_AUTHORIZED_AS_ADMIN = map[string]bool{
 	"96492516966174720": true, //valar
+}
 
-	"93204976779694080": false, //Pete aka Pusagi
+// Users with extra priviliges bot nothing dangerous
+var IS_PRIVILEGED_USER = map[string]bool{
+	"105697010165747712": true, //dada
+	"228586200741445642": true, //Snipe
+	"533205511185629202": true, //Y2kid
+	"93204976779694080":  true, //Pete aka Pusagi
 }
 
 // CPL SERVER VALUES: (MASTER BRANCH)
-//const SPREADSHEET_ID string = "1Xd0ohSMrYKsB-d0g3OgbovA3BV4NntQg_ZXjDJ7js8I" // CPL MASTER SPREADSHEET ID
-//const DISCORD_SERVER_ID string = "426172214677602304"                        // CPL SERVER
-//const MATCH_REPORTING_CHANNEL_ID string = "945736138864349234"               // CPL CHANNEL
-//const CPL_CLIPS_CHANNEL_ID string = "868530162852057139"                     // CPL CLIPS CHANNEL
-//const ZERG_ROLE_ID string = "426370952402698270"
-//const TERRAN_ROLE_ID string = "426371039241437184"
-//const PROTOSS_ROLE_ID string = "426371009982103555"
-//const TIER0_ROLE_ID string = "686335315492732963"
-//const TIER1_ROLE_ID string = "486932541396221962"
-//const TIER2_ROLE_ID string = "486932586724065285"
-//const TIER3_ROLE_ID string = "486932645519818752"
-//const COACH_ROLE_ID string = "426370872740413440"
-//const ASST_COACH_ROLE_ID string = "514179771295334420"
+const SPREADSHEET_ID string = "1Xd0ohSMrYKsB-d0g3OgbovA3BV4NntQg_ZXjDJ7js8I" // CPL MASTER SPREADSHEET ID
+const DISCORD_SERVER_ID string = "426172214677602304"                        // CPL SERVER
+const MATCH_REPORTING_CHANNEL_ID string = "945736138864349234"               // CPL CHANNEL
+const CPL_CLIPS_CHANNEL_ID string = "868530162852057139"                     // CPL CLIPS CHANNEL
+const ZERG_ROLE_ID string = "426370952402698270"
+const TERRAN_ROLE_ID string = "426371039241437184"
+const PROTOSS_ROLE_ID string = "426371009982103555"
+const TIER0_ROLE_ID string = "686335315492732963"
+const TIER1_ROLE_ID string = "486932541396221962"
+const TIER2_ROLE_ID string = "486932586724065285"
+const TIER3_ROLE_ID string = "486932645519818752"
+const COACH_ROLE_ID string = "426370872740413440"
+const ASST_COACH_ROLE_ID string = "514179771295334420"
 const TEAM1_ROLE_ID string = "952362058282836079"
 const TEAM2_ROLE_ID string = "952363361360810015"
 const TEAM3_ROLE_ID string = "952363465299853373"
@@ -55,21 +61,19 @@ const TEAM5_ROLE_ID string = "952363548166750259"
 const TEAM6_ROLE_ID string = "952363607616794624"
 
 //// TEST SERVER VALUESL (TESTING BRANCH)
-const CPL_CLIPS_CHANNEL_ID string = "945364478973861898"                     // TEst SERVER CLIPS CHANNEL
-const DISCORD_SERVER_ID string = "856762567414382632"                        // TEST SERVER ID
-const MATCH_REPORTING_CHANNEL_ID string = "945364478973861898"               // TEST CHANNEL ID
-const SPREADSHEET_ID string = "1K-jV6-CUmjOSPW338MS8gXAYtYNW9qdMeB7XMEiQyn0" // TEST TEST SHEEET ID
-const ZERG_ROLE_ID string = "941808009984737281"
-const TERRAN_ROLE_ID string = "941808071817187389"
-const PROTOSS_ROLE_ID string = "941808145993441331"
-const TIER0_ROLE_ID string = "942081263358070794"
-const TIER1_ROLE_ID string = "942081322325794839"
-const TIER2_ROLE_ID string = "942081354353487872"
-const TIER3_ROLE_ID string = "942081409500213308"
-const COACH_ROLE_ID string = "942083540739317811"
-const ASST_COACH_ROLE_ID string = "941808582410764288"
-
-//const PLAYER_ROLE_ID string = "" // no longer needed
+//const CPL_CLIPS_CHANNEL_ID string = "945364478973861898"                     // TEST SERVER CLIPS CHANNEL
+//const DISCORD_SERVER_ID string = "856762567414382632"                        // TEST SERVER ID
+//const MATCH_REPORTING_CHANNEL_ID string = "945364478973861898"               // TEST CHANNEL ID
+//const SPREADSHEET_ID string = "1K-jV6-CUmjOSPW338MS8gXAYtYNW9qdMeB7XMEiQyn0" // TEST TEST SHEEET ID
+//const ZERG_ROLE_ID string = "941808009984737281"
+//const TERRAN_ROLE_ID string = "941808071817187389"
+//const PROTOSS_ROLE_ID string = "941808145993441331"
+//const TIER0_ROLE_ID string = "942081263358070794"
+//const TIER1_ROLE_ID string = "942081322325794839"
+//const TIER2_ROLE_ID string = "942081354353487872"
+//const TIER3_ROLE_ID string = "942081409500213308"
+//const COACH_ROLE_ID string = "942083540739317811"
+//const ASST_COACH_ROLE_ID string = "941808582410764288"
 
 // Constants for use on get_sheet_state logic
 const STAFF int = -1
@@ -189,17 +193,16 @@ Global vars
 var TOKEN string                          //discord api token
 var NEW_BATCH_NAME string                 // Name of a batch of newly created roles
 var newlyCreatedRoles []string            // Holds newly created discord role IDs
-var newlyAssignedRoles [][2]string        //[roleid][userid]
-var dangerousCommands dangerousCommands_t // info about /update roles command while being used
+var newlyAssignedRoles [][2]string        // [roleid][userid]
+var dangerousCommands dangerousCommands_t // Info about /update roles command while being used
+var discordUsers = []*discordgo.Member{}  // slice of all users from discord
 // Maps
 var mapDiscordNameToCordID = map[string]string{}     // Used to lookup discordid from discord name
 var mapDiscordIdExists = map[string]bool{}           // Used to check if the user exists on the server
 var mapExistingDiscordRoles = map[string]bool{}      // Used to check if the role exists on the server
-var mapBatchesOfCreatedRoles = map[string][]team_t{} //[batchName]{roleid, roleid, roleid, roleid}
-
-var mapWebUserNameToWebUserId = map[string]int{}  // map of WebApp username to numerical WebApp user ID
-var mapWebUserIdToPlayer = map[int]web_player_t{} //this is the main map I want to use
-var discordUsers = []*discordgo.Member{}          //map of all users from discord
+var mapBatchesOfCreatedRoles = map[string][]team_t{} // [batchName]{roleid, roleid, roleid, roleid}
+var mapWebUserNameToWebUserId = map[string]int{}     // map of WebApp username to numerical WebApp user ID
+var mapWebUserIdToPlayer = map[int]web_player_t{}    // this is the main map I want to use for accessing player data
 
 //##### End of global vars
 
@@ -224,7 +227,7 @@ func scan_message(s *discordgo.Session, m *discordgo.MessageCreate) {
 	}
 
 	// Trigger on interactive command
-	if dangerousCommands.isInUse && m.Author.ID == dangerousCommands.AuthorID && AUTHORIZED_USERS[m.Author.ID] {
+	if dangerousCommands.isInUse && m.Author.ID == dangerousCommands.AuthorID && IS_AUTHORIZED_AS_ADMIN[m.Author.ID] {
 		switch dangerousCommands.cmdName {
 
 		case "/deleteroles":
@@ -241,7 +244,7 @@ func scan_message(s *discordgo.Session, m *discordgo.MessageCreate) {
 	// Handle first use and non-interactive commands
 	switch m.Content {
 	case "/scan_users":
-		if !AUTHORIZED_USERS[m.Author.ID] { // Check for Authorization
+		if !IS_AUTHORIZED_AS_ADMIN[m.Author.ID] { // Check for Authorization
 			_, err := s.ChannelMessageSend(m.ChannelID, DIFF_MSG_START+"- /scan_missing ERROR: "+m.Author.Username+" IS NOT AUTHORIZED"+DIFF_MSG_END)
 			checkError(err)
 			return
@@ -259,7 +262,7 @@ func scan_message(s *discordgo.Session, m *discordgo.MessageCreate) {
 		}
 
 	case "/assignroles":
-		if !AUTHORIZED_USERS[m.Author.ID] { // Check for Authorization
+		if !IS_AUTHORIZED_AS_ADMIN[m.Author.ID] { // Check for Authorization
 			_, err := s.ChannelMessageSend(m.ChannelID, DIFF_MSG_START+"- /assignroles ERROR: "+m.Author.Username+" IS NOT AUTHORIZED"+DIFF_MSG_END)
 			checkError(err)
 			return
@@ -274,7 +277,7 @@ func scan_message(s *discordgo.Session, m *discordgo.MessageCreate) {
 		assign_roles_from_json(s, m)
 
 	case "/deleteroles":
-		if !AUTHORIZED_USERS[m.Author.ID] { // Check for Authorization
+		if !IS_AUTHORIZED_AS_ADMIN[m.Author.ID] { // Check for Authorization
 			_, err := s.ChannelMessageSend(m.ChannelID, DIFF_MSG_START+"- /deleteroles ERROR: "+m.Author.Username+" IS NOT AUTHORIZED"+DIFF_MSG_END)
 			checkError(err)
 			return
@@ -301,7 +304,7 @@ func scan_message(s *discordgo.Session, m *discordgo.MessageCreate) {
 		}
 
 	case "/parse_past_messages":
-		if AUTHORIZED_USERS[m.Author.ID] {
+		if IS_AUTHORIZED_AS_ADMIN[m.Author.ID] {
 			parse_past_messages(s, m)
 			_, err := s.ChannelMessageSend(m.ChannelID, "/parse_past_messages complete\n")
 			checkError(err)
@@ -319,7 +322,7 @@ func scan_message(s *discordgo.Session, m *discordgo.MessageCreate) {
 			}
 			return
 		}
-		if AUTHORIZED_USERS[m.Author.ID] { // if the user is authorized, proceed with the operation
+		if IS_AUTHORIZED_AS_ADMIN[m.Author.ID] { // if the user is authorized, proceed with the operation
 			_, err := s.ChannelMessageSend(m.ChannelID, FIX_MSG_START+"+ /webassignroles ROLE UPDATE STARTED"+FIX_MSG_END)
 			if err != nil {
 				fmt.Println(err)
@@ -366,6 +369,30 @@ func scan_message(s *discordgo.Session, m *discordgo.MessageCreate) {
 		dangerousCommands.isInUse = false //reset the data so /assignroles can be used again
 	}
 	*/
+
+	if IS_PRIVILEGED_USER[m.Author.ID] || IS_AUTHORIZED_AS_ADMIN[m.Author.ID] {
+		// Lookup a player and show their information
+		if strings.Contains(m.Content, "/whois") {
+			userInput := strings.TrimLeft(m.Content, "/whois")
+			userInput = strings.TrimPrefix(userInput, " ")
+			userInput = strings.TrimSuffix(userInput, "\n")
+			userID := mapWebUserNameToWebUserId[userInput]
+			player := mapWebUserIdToPlayer[userID]
+
+			if mapDiscordIdExists[player.Discord_id] {
+				message := "**Web Name**: " + fmt.Sprintln(player.WebName)
+				message += "**Discord: ** " + "<@" + fmt.Sprintf(player.Discord_id) + ">\n"
+				//message += "**Known Discord Names: **" + fmt.Sprintln(player.DiscordName)
+				message += "**SnowflakeID: ** " + fmt.Sprintln(player.Discord_id)
+				_, err := s.ChannelMessageSend(m.ChannelID, message)
+				checkError(err)
+			} else {
+				_, err := s.ChannelMessageSend(m.ChannelID, userInput+" not found")
+				checkError(err)
+			}
+		}
+	}
+
 }
 
 // wrapper for sending message so we can do it concurrently
@@ -1130,19 +1157,38 @@ func log_match_accepted(s string, accepted bool) {
 	}
 }
 
+// Load persistent data into memory
+func load_persistent_internal_data_structures() {
+	var filenames = [7]string{"./data/discordUsers",
+		"./data/mapWebUserNameToWebUserId",
+		"./data/mapWebUserNameToWebUserId",
+		"./data/mapDiscordNameToCordID",
+		"./data/mapDiscordIdExists",
+		"./data/mapWebUserIdToPlayer", //this is the main important one
+		"./datamapBatchesOfCreatedRoles"}
+
+	for _, name := range filenames {
+		if _, err := os.Stat(name); err == nil {
+			load_data(&name, name)
+		} else {
+			checkError(err) // file may or may not exist. See err for details.
+		}
+	}
+}
+
 // persist data structures on disc in ./data (data folder must be present in directory)
 func store_data(data interface{}, filename string) {
 	buffer := new(bytes.Buffer)
 	encoder := gob.NewEncoder(buffer)
 	err := encoder.Encode(data)
 	checkError(err)
-	err = ioutil.WriteFile("./data"+filename, buffer.Bytes(), 0600)
+	err = ioutil.WriteFile("./data/"+filename, buffer.Bytes(), 0600)
 	checkError(err)
 }
 
 // load data that was stored on disc in ./data (data folder must be present in directory)
 func load_data(data interface{}, filename string) {
-	raw, err := ioutil.ReadFile("./data" + filename)
+	raw, err := ioutil.ReadFile(filename)
 	checkError(err)
 	buffer := bytes.NewBuffer(raw)
 	dec := gob.NewDecoder(buffer)
@@ -1159,15 +1205,16 @@ func scan_web_players(s *discordgo.Session, m *discordgo.MessageCreate) {
 	discordUsers1, err := s.GuildMembers(DISCORD_SERVER_ID, "", 1000)
 	checkError(err)
 
+	discordUsers = append(discordUsers, discordUsers1...)
 	// TODO: we should check to make sure we automatically always send the right requests
 	// Since the server has more than 1k members we have to request 2 batches of 1000 each
-	lasti := len(discordUsers) - 1 //index of last mmember in slice
-	discordUsers2, err := s.GuildMembers(DISCORD_SERVER_ID, discordUsers[lasti].User.ID, 1000)
-	checkError(err)
-
-	//combine both into mega slice
-	discordUsers = append(discordUsers, discordUsers1...)
-	discordUsers = append(discordUsers, discordUsers2...)
+	if len(discordUsers) > 999 { //only request another batch if there are a lot of users
+		lasti := len(discordUsers) - 1 //index of last mmember in slice
+		discordUsers2, err := s.GuildMembers(DISCORD_SERVER_ID, discordUsers[lasti].User.ID, 1000)
+		checkError(err)
+		//combine both into mega slice
+		discordUsers = append(discordUsers, discordUsers2...)
+	}
 
 	// 2. Create map of username#discriminator to discord_id
 	for _, u := range discordUsers {
@@ -1195,7 +1242,6 @@ func scan_web_players(s *discordgo.Session, m *discordgo.MessageCreate) {
 		mapWebUserIdToPlayer[b.WebUserId] = b
 	}
 	// create map of playername to webID
-	mapWebUserNameToWebUserId := make(map[string]int)
 	for _, b := range playersUnmarsh {
 		mapWebUserNameToWebUserId[b.WebName] = b.WebUserId
 	}
@@ -1253,25 +1299,6 @@ func scan_web_players(s *discordgo.Session, m *discordgo.MessageCreate) {
 	store_data(mapDiscordNameToCordID, "mapDiscordNameToCordID")
 	store_data(mapDiscordIdExists, "mapDiscordIdExists")
 	store_data(mapWebUserIdToPlayer, "mapWebUserIdToPlayer")
-}
-
-// Load persistent data into memory
-func load_persistent_internal_data_structures() {
-	var filenames = [7]string{"discordUsers",
-		"mapWebUserNameToWebUserId",
-		"mapWebUserNameToWebUserId",
-		"mapDiscordNameToCordID",
-		"mapDiscordIdExists",
-		"mapWebUserIdToPlayer", //this is the main important one
-		"mapBatchesOfCreatedRoles"}
-
-	for _, name := range filenames {
-		if _, err := os.Stat(name); err == nil {
-			load_data(&name, "./data/"+name)
-		} else {
-			checkError(err) // file may or may not exist. See err for details.
-		}
-	}
 }
 
 // Parse past messages from channel this func is called
