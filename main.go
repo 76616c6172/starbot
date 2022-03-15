@@ -372,8 +372,8 @@ func scan_message(s *discordgo.Session, m *discordgo.MessageCreate) {
 
 	if IS_PRIVILEGED_USER[m.Author.ID] || IS_AUTHORIZED_AS_ADMIN[m.Author.ID] {
 		// Lookup a player and show their information
-		if strings.Contains(m.Content, "/whois") {
-			userInput := strings.TrimLeft(m.Content, "/whois")
+		if strings.Contains(m.Content, "/show") {
+			userInput := strings.TrimLeft(m.Content, "/show")
 			userInput = strings.TrimPrefix(userInput, " ")
 			userInput = strings.TrimSuffix(userInput, "\n")
 			userID := mapWebUserNameToWebUserId[userInput]
