@@ -28,8 +28,7 @@ The values here all need to be set correctly for all functionality to work!
 
 // Hardcode all IDs that are allowed to use potentially dangerous administrative actions, such as /assignroles
 var AUTHORIZED_USERS = map[string]bool{
-	"96492516966174720": true, //valar
-
+	"96492516966174720": true,  //valar
 	"93204976779694080": false, //Pete aka Pusagi
 }
 
@@ -69,8 +68,6 @@ const TEAM6_ROLE_ID string = "952363607616794624"
 //const TIER3_ROLE_ID string = "942081409500213308"
 //const COACH_ROLE_ID string = "942083540739317811"
 //const ASST_COACH_ROLE_ID string = "941808582410764288"
-
-//const PLAYER_ROLE_ID string = "" // no longer needed
 
 // Constants for use on get_sheet_state logic
 const STAFF int = -1
@@ -189,17 +186,16 @@ Global vars
 ##### */
 var NEW_BATCH_NAME string                 // Name of a batch of newly created roles
 var newlyCreatedRoles []string            // Holds newly created discord role IDs
-var newlyAssignedRoles [][2]string        //[roleid][userid]
-var dangerousCommands dangerousCommands_t // info about /update roles command while being used
+var newlyAssignedRoles [][2]string        // [roleid][userid]
+var dangerousCommands dangerousCommands_t // Info about /update roles command while being used
+var discordUsers = []*discordgo.Member{}  // slice of all users from discord
 // Maps
 var mapDiscordNameToCordID = map[string]string{}     // Used to lookup discordid from discord name
 var mapDiscordIdExists = map[string]bool{}           // Used to check if the user exists on the server
 var mapExistingDiscordRoles = map[string]bool{}      // Used to check if the role exists on the server
-var mapBatchesOfCreatedRoles = map[string][]team_t{} //[batchName]{roleid, roleid, roleid, roleid}
-
-var mapWebUserNameToWebUserId = map[string]int{}  // map of WebApp username to numerical WebApp user ID
-var mapWebUserIdToPlayer = map[int]web_player_t{} //this is the main map I want to use
-var discordUsers = []*discordgo.Member{}          //map of all users from discord
+var mapBatchesOfCreatedRoles = map[string][]team_t{} // [batchName]{roleid, roleid, roleid, roleid}
+var mapWebUserNameToWebUserId = map[string]int{}     // map of WebApp username to numerical WebApp user ID
+var mapWebUserIdToPlayer = map[int]web_player_t{}    // this is the main map I want to use for accessing player data
 
 //##### End of global vars
 
@@ -391,6 +387,14 @@ func scan_message(s *discordgo.Session, m *discordgo.MessageCreate) {
 		dangerousCommands.isInUse = false //reset the data so /assignroles can be used again
 	}
 	*/
+
+	// Commands that trigger on partial match
+	if strings.Contains(m.Content, "/lookup") {
+		userInput := strings.TrimLeft(m.Content, "/lookup")
+		_, err := s.ChannelMessageSend(m.ChannelID, userInput)
+		checkError(err)
+	}
+
 }
 
 // Test function executes with side effects and returns final message to be send
