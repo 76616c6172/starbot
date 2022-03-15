@@ -186,6 +186,7 @@ type dangerousCommands_t struct {
 /* #####
 Global vars
 ##### */
+var TOKEN string                          //discord api token
 var NEW_BATCH_NAME string                 // Name of a batch of newly created roles
 var newlyCreatedRoles []string            // Holds newly created discord role IDs
 var newlyAssignedRoles [][2]string        //[roleid][userid]
@@ -213,28 +214,14 @@ func checkError(err error) {
 // Is called by AddHandler every time a new message is created - on ANY channel the bot has access to
 func scan_message(s *discordgo.Session, m *discordgo.MessageCreate) {
 
-	// Ignore all messages created by the bot itself
-	if m.Author.ID == s.State.User.ID {
+	if m.Author.ID == s.State.User.ID { // Ignore all messages created by the bot itself
 		return
 	}
 
-	// Monitor messages from certain channels
-	switch m.ChannelID {
-	/*
-		case MATCH_REPORTING_CHANNEL_ID:
-			log_message(m.Content) //log everything
-			if strings.Contains(m.Content, ": ") {
-				return_message := parse_match_result(m.Content, s, m)
-				_, err := s.ChannelMessageSend(m.ChannelID, return_message)
-				checkError(err)
-			}
-	*/
+	switch m.ChannelID { // Monitor messages from certain channels
 	case CPL_CLIPS_CHANNEL_ID:
 		parse_message_in_clips_channel(s, m)
-
 	}
-
-	// Log messages from match reporting channel
 
 	// Trigger on interactive command
 	if dangerousCommands.isInUse && m.Author.ID == dangerousCommands.AuthorID && AUTHORIZED_USERS[m.Author.ID] {
@@ -251,7 +238,7 @@ func scan_message(s *discordgo.Session, m *discordgo.MessageCreate) {
 		}
 	}
 
-	// Handle first use or non-interactive commands
+	// Handle first use and non-interactive commands
 	switch m.Content {
 	case "/scan_users":
 		if !AUTHORIZED_USERS[m.Author.ID] { // Check for Authorization
@@ -359,19 +346,8 @@ func scan_message(s *discordgo.Session, m *discordgo.MessageCreate) {
 				fmt.Println(err)
 			}
 		}
-		// =====================================================================
-		// USE THIS COMMAND FOR TESTING
-		// =====================================================================
-	case "/test":
-		message := test(s, m)
-
-		_, err := s.ChannelMessageSend(m.ChannelID, message)
-		if err != nil {
-			fmt.Println(err)
-			return
-		}
-		// =====================================================================
-		// =====================================================================
+	case "/test": // USE THIS COMMAND FOR TESTING
+		test(s, m)
 
 	case "/help":
 		_, err := s.ChannelMessageSend(m.ChannelID, "```ini\n"+AVAILABLE_COMMANDS+"\n```")
@@ -392,11 +368,26 @@ func scan_message(s *discordgo.Session, m *discordgo.MessageCreate) {
 	*/
 }
 
+// wrapper for sending message so we can do it concurrently
+// Okay that didn't make it faster at all
+func messageSendWrapper(s *discordgo.Session, m *discordgo.MessageCreate, c string) {
+	_, err := s.ChannelMessageSend(m.ChannelID, c)
+	checkError(err)
+}
+
 // Test function executes with side effects and returns final message to be send
-func test(s *discordgo.Session, m *discordgo.MessageCreate) string {
-	message := fmt.Sprintln(m.ChannelID)
-	message += "<-channel ID"
-	return message
+func test(s *discordgo.Session, m *discordgo.MessageCreate) {
+	bucket := s.Ratelimiter.GetBucket(TOKEN)
+	r := discordgo.NewRatelimiter()
+	t := r.GetWaitTime(bucket, 1)
+	fmt.Println(bucket)
+	fmt.Println(t.Nanoseconds())
+
+	for i := 0; i < 50; i++ {
+		num := strconv.Itoa(i)
+		s.ChannelMessageSend(m.ChannelID, num)
+		//go messageSendWrapper(s, m, num)
+	}
 }
 
 /* //testfunc old
@@ -1648,7 +1639,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	TOKEN := os.Args[1] // discord API Token
+	TOKEN = os.Args[1] // discord API Token
 
 	// Open file for match report logging
 	logfile, err := os.OpenFile("log.html", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
