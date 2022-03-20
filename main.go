@@ -1152,21 +1152,29 @@ func log_match_accepted(s string, accepted bool) {
 
 // Load persistent data into memory
 func load_persistent_internal_data_structures() {
-	var filenames = [7]string{"discordUsers",
-		"mapWebUserNameToWebUserId",
-		"mapWebUserNameToWebUserId",
-		"mapDiscordNameToCordID",
-		"mapDiscordIdExists",
-		"mapWebUserIdToPlayer", //this is the main important one
-		"mapBatchesOfCreatedRoles"}
+	/*
+		var filenames = [7]string{"discordUsers",
+			"mapWebUserNameToWebUserId",
+			"mapDiscordNameToCordID",
+			"mapDiscordIdExists",
+			"mapWebUserIdToPlayer", //this is the main important one
+			"mapBatchesOfCreatedRoles"}
 
-	for _, name := range filenames {
-		if _, err := os.Stat("./data/" + name); err == nil {
-			load_data(&name, name)
-		} else {
-			checkError(err) // file may or may not exist. See err for details.
-		}
-	}
+			for _, name := range filenames {
+				if _, err := os.Stat("./data/" + name); err == nil {
+					load_data(&name, name)
+					fmt.Println("LOADING", name)
+				} else {
+					checkError(err) // file may or may not exist. See err for details.
+				}
+			}
+	*/
+	load_data(&discordUsers, "discordUsers")
+	load_data(&mapWebUserNameToWebUserId, "mapWebUserNameToWebUserId")
+	load_data(&mapWebUserIdToPlayer, "mapWebUserIdToPlayer")
+	load_data(&mapDiscordNameToCordID, "mapDiscordNameToCordId")
+	load_data(&mapDiscordIdExists, "mapDiscordIdExists")
+	load_data(&mapBatchesOfCreatedRoles, "mapBatchesOfCreatedRoles")
 }
 
 // persist data structures on disc in ./data (data folder must be present in directory)
