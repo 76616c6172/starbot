@@ -404,17 +404,10 @@ func messageSendWrapper(s *discordgo.Session, m *discordgo.MessageCreate, c stri
 
 // Test function executes with side effects and returns final message to be send
 func test(s *discordgo.Session, m *discordgo.MessageCreate) {
-	bucket := s.Ratelimiter.GetBucket(TOKEN)
-	r := discordgo.NewRatelimiter()
-	t := r.GetWaitTime(bucket, 1)
-	fmt.Println(bucket)
-	fmt.Println(t.Nanoseconds())
-
-	for i := 0; i < 50; i++ {
-		num := strconv.Itoa(i)
-		s.ChannelMessageSend(m.ChannelID, num)
-		//go messageSendWrapper(s, m, num)
-	}
+	a := mapWebUserIdToPlayer[42]
+	s.ChannelMessageSend(m.ChannelID, a.WebName)
+	b := mapWebUserNameToWebUserId["Neblime"]
+	s.ChannelMessageSend(m.ChannelID, string(b))
 }
 
 /* //testfunc old
@@ -1159,16 +1152,16 @@ func log_match_accepted(s string, accepted bool) {
 
 // Load persistent data into memory
 func load_persistent_internal_data_structures() {
-	var filenames = [7]string{"./data/discordUsers",
-		"./data/mapWebUserNameToWebUserId",
-		"./data/mapWebUserNameToWebUserId",
-		"./data/mapDiscordNameToCordID",
-		"./data/mapDiscordIdExists",
-		"./data/mapWebUserIdToPlayer", //this is the main important one
-		"./datamapBatchesOfCreatedRoles"}
+	var filenames = [7]string{"discordUsers",
+		"mapWebUserNameToWebUserId",
+		"mapWebUserNameToWebUserId",
+		"mapDiscordNameToCordID",
+		"mapDiscordIdExists",
+		"mapWebUserIdToPlayer", //this is the main important one
+		"mapBatchesOfCreatedRoles"}
 
 	for _, name := range filenames {
-		if _, err := os.Stat(name); err == nil {
+		if _, err := os.Stat("./data/" + name); err == nil {
 			load_data(&name, name)
 		} else {
 			checkError(err) // file may or may not exist. See err for details.
@@ -1188,7 +1181,7 @@ func store_data(data interface{}, filename string) {
 
 // load data that was stored on disc in ./data (data folder must be present in directory)
 func load_data(data interface{}, filename string) {
-	raw, err := ioutil.ReadFile(filename)
+	raw, err := ioutil.ReadFile("./data/" + filename)
 	checkError(err)
 	buffer := bytes.NewBuffer(raw)
 	dec := gob.NewDecoder(buffer)
