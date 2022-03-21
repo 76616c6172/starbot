@@ -27,9 +27,16 @@ The values here all need to be set correctly for all functionality to work!
 ##### */
 
 // Hardcode all IDs that are allowed to use potentially dangerous administrative actions, such as /assignroles
-var AUTHORIZED_USERS = map[string]bool{
-	"96492516966174720": true,  //valar
-	"93204976779694080": false, //Pete aka Pusagi
+var IS_AUTHORIZED_AS_ADMIN = map[string]bool{
+	"96492516966174720": true, //valar
+}
+
+// Users with extra priviliges bot nothing dangerous
+var IS_PRIVILEGED_USER = map[string]bool{
+	"105697010165747712": true, //dada
+	"228586200741445642": true, //Snipe
+	"533205511185629202": true, //Y2kid
+	"93204976779694080":  true, //Pete aka Pusagi
 }
 
 // CPL SERVER VALUES: (MASTER BRANCH)
@@ -46,6 +53,7 @@ var AUTHORIZED_USERS = map[string]bool{
 //const TIER3_ROLE_ID string = "486932645519818752"
 //const COACH_ROLE_ID string = "426370872740413440"
 //const ASST_COACH_ROLE_ID string = "514179771295334420"
+
 const TEAM1_ROLE_ID string = "952362058282836079"
 const TEAM2_ROLE_ID string = "952363361360810015"
 const TEAM3_ROLE_ID string = "952363465299853373"
@@ -67,6 +75,20 @@ const TIER2_ROLE_ID string = "942081354353487872"
 const TIER3_ROLE_ID string = "942081409500213308"
 const COACH_ROLE_ID string = "942083540739317811"
 const ASST_COACH_ROLE_ID string = "941808582410764288"
+
+//const CPL_CLIPS_CHANNEL_ID string = "945364478973861898"                     // TEST SERVER CLIPS CHANNEL
+//const DISCORD_SERVER_ID string = "856762567414382632"                        // TEST SERVER ID
+//const MATCH_REPORTING_CHANNEL_ID string = "945364478973861898"               // TEST CHANNEL ID
+//const SPREADSHEET_ID string = "1K-jV6-CUmjOSPW338MS8gXAYtYNW9qdMeB7XMEiQyn0" // TEST TEST SHEEET ID
+//const ZERG_ROLE_ID string = "941808009984737281"
+//const TERRAN_ROLE_ID string = "941808071817187389"
+//const PROTOSS_ROLE_ID string = "941808145993441331"
+//const TIER0_ROLE_ID string = "942081263358070794"
+//const TIER1_ROLE_ID string = "942081322325794839"
+//const TIER2_ROLE_ID string = "942081354353487872"
+//const TIER3_ROLE_ID string = "942081409500213308"
+//const COACH_ROLE_ID string = "942083540739317811"
+//const ASST_COACH_ROLE_ID string = "941808582410764288"
 
 // Constants for use on get_sheet_state logic
 const STAFF int = -1
@@ -220,7 +242,7 @@ func scan_message(s *discordgo.Session, m *discordgo.MessageCreate) {
 	}
 
 	// Trigger on interactive command
-	if dangerousCommands.isInUse && m.Author.ID == dangerousCommands.AuthorID && AUTHORIZED_USERS[m.Author.ID] {
+	if dangerousCommands.isInUse && m.Author.ID == dangerousCommands.AuthorID && IS_AUTHORIZED_AS_ADMIN[m.Author.ID] {
 		switch dangerousCommands.cmdName {
 
 		case "/deleteroles":
@@ -237,7 +259,7 @@ func scan_message(s *discordgo.Session, m *discordgo.MessageCreate) {
 	// Handle first use and non-interactive commands
 	switch m.Content {
 	case "/scan_users":
-		if !AUTHORIZED_USERS[m.Author.ID] { // Check for Authorization
+		if !IS_AUTHORIZED_AS_ADMIN[m.Author.ID] { // Check for Authorization
 			_, err := s.ChannelMessageSend(m.ChannelID, DIFF_MSG_START+"- /scan_missing ERROR: "+m.Author.Username+" IS NOT AUTHORIZED"+DIFF_MSG_END)
 			checkError(err)
 			return
@@ -255,7 +277,7 @@ func scan_message(s *discordgo.Session, m *discordgo.MessageCreate) {
 		}
 
 	case "/assignroles":
-		if !AUTHORIZED_USERS[m.Author.ID] { // Check for Authorization
+		if !IS_AUTHORIZED_AS_ADMIN[m.Author.ID] { // Check for Authorization
 			_, err := s.ChannelMessageSend(m.ChannelID, DIFF_MSG_START+"- /assignroles ERROR: "+m.Author.Username+" IS NOT AUTHORIZED"+DIFF_MSG_END)
 			checkError(err)
 			return
@@ -270,7 +292,7 @@ func scan_message(s *discordgo.Session, m *discordgo.MessageCreate) {
 		assign_roles_from_json(s, m)
 
 	case "/deleteroles":
-		if !AUTHORIZED_USERS[m.Author.ID] { // Check for Authorization
+		if !IS_AUTHORIZED_AS_ADMIN[m.Author.ID] { // Check for Authorization
 			_, err := s.ChannelMessageSend(m.ChannelID, DIFF_MSG_START+"- /deleteroles ERROR: "+m.Author.Username+" IS NOT AUTHORIZED"+DIFF_MSG_END)
 			checkError(err)
 			return
@@ -297,7 +319,7 @@ func scan_message(s *discordgo.Session, m *discordgo.MessageCreate) {
 		}
 
 	case "/parse_past_messages":
-		if AUTHORIZED_USERS[m.Author.ID] {
+		if IS_AUTHORIZED_AS_ADMIN[m.Author.ID] {
 			parse_past_messages(s, m)
 			_, err := s.ChannelMessageSend(m.ChannelID, "/parse_past_messages complete\n")
 			checkError(err)
@@ -315,7 +337,7 @@ func scan_message(s *discordgo.Session, m *discordgo.MessageCreate) {
 			}
 			return
 		}
-		if AUTHORIZED_USERS[m.Author.ID] { // if the user is authorized, proceed with the operation
+		if IS_AUTHORIZED_AS_ADMIN[m.Author.ID] { // if the user is authorized, proceed with the operation
 			_, err := s.ChannelMessageSend(m.ChannelID, FIX_MSG_START+"+ /webassignroles ROLE UPDATE STARTED"+FIX_MSG_END)
 			if err != nil {
 				fmt.Println(err)
@@ -363,10 +385,10 @@ func scan_message(s *discordgo.Session, m *discordgo.MessageCreate) {
 	}
 	*/
 
-	if AUTHORIZED_USERS[m.Author.ID] {
+	if IS_PRIVILEGED_USER[m.Author.ID] || IS_AUTHORIZED_AS_ADMIN[m.Author.ID] {
 		// Lookup a player and show their information
-		if strings.Contains(m.Content, "/whois") {
-			userInput := strings.TrimLeft(m.Content, "/whois")
+		if strings.Contains(m.Content, "/show") {
+			userInput := strings.TrimLeft(m.Content, "/show")
 			userInput = strings.TrimPrefix(userInput, " ")
 			userInput = strings.TrimSuffix(userInput, "\n")
 			userID := mapWebUserNameToWebUserId[userInput]
@@ -397,17 +419,10 @@ func messageSendWrapper(s *discordgo.Session, m *discordgo.MessageCreate, c stri
 
 // Test function executes with side effects and returns final message to be send
 func test(s *discordgo.Session, m *discordgo.MessageCreate) {
-	bucket := s.Ratelimiter.GetBucket(TOKEN)
-	r := discordgo.NewRatelimiter()
-	t := r.GetWaitTime(bucket, 1)
-	fmt.Println(bucket)
-	fmt.Println(t.Nanoseconds())
-
-	for i := 0; i < 50; i++ {
-		num := strconv.Itoa(i)
-		s.ChannelMessageSend(m.ChannelID, num)
-		//go messageSendWrapper(s, m, num)
-	}
+	a := mapWebUserIdToPlayer[42]
+	s.ChannelMessageSend(m.ChannelID, a.WebName)
+	b := mapWebUserNameToWebUserId["Neblime"]
+	s.ChannelMessageSend(m.ChannelID, string(b))
 }
 
 /* //testfunc old
@@ -1152,21 +1167,13 @@ func log_match_accepted(s string, accepted bool) {
 
 // Load persistent data into memory
 func load_persistent_internal_data_structures() {
-	var filenames = [7]string{"./data/discordUsers",
-		"./data/mapWebUserNameToWebUserId",
-		"./data/mapWebUserNameToWebUserId",
-		"./data/mapDiscordNameToCordID",
-		"./data/mapDiscordIdExists",
-		"./data/mapWebUserIdToPlayer", //this is the main important one
-		"./datamapBatchesOfCreatedRoles"}
+	load_data(&discordUsers, "discordUsers")
+	load_data(&mapWebUserNameToWebUserId, "mapWebUserNameToWebUserId")
+	load_data(&mapWebUserIdToPlayer, "mapWebUserIdToPlayer")
+	load_data(&mapDiscordNameToCordID, "mapDiscordNameToCordId")
+	load_data(&mapDiscordIdExists, "mapDiscordIdExists")
+	load_data(&mapBatchesOfCreatedRoles, "mapBatchesOfCreatedRoles")
 
-	for _, name := range filenames {
-		if _, err := os.Stat(name); err == nil {
-			load_data(&name, name)
-		} else {
-			checkError(err) // file may or may not exist. See err for details.
-		}
-	}
 }
 
 // persist data structures on disc in ./data (data folder must be present in directory)
@@ -1181,7 +1188,7 @@ func store_data(data interface{}, filename string) {
 
 // load data that was stored on disc in ./data (data folder must be present in directory)
 func load_data(data interface{}, filename string) {
-	raw, err := ioutil.ReadFile(filename)
+	raw, err := ioutil.ReadFile("./data/" + filename)
 	checkError(err)
 	buffer := bytes.NewBuffer(raw)
 	dec := gob.NewDecoder(buffer)
