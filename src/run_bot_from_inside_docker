@@ -1,0 +1,2 @@
+#!/bin/sh
+./Starbot <discord_api_bot_authorization_token_here>
